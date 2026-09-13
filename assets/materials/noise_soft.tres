@@ -1,0 +1,23 @@
+[gd_resource type="NoiseTexture2D" load_steps=2 format=3]
+
+; Billowy grayscale FBM. Used by the terrain shader for macro/detail colour
+; break-up and by both fog shaders as the density field.
+; Seamless so it can tile forever across a 280 m map without a visible seam.
+; 256 x 256 keeps it comfortably inside a phone's texture cache.
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_soft"]
+noise_type = 1
+seed = 1706
+frequency = 0.013
+fractal_type = 1
+fractal_octaves = 4
+fractal_lacunarity = 2.1
+fractal_gain = 0.52
+
+[resource]
+width = 256
+height = 256
+seamless = true
+seamless_blend_skirt = 0.25
+generate_mipmaps = true
+noise = SubResource("FastNoiseLite_soft")

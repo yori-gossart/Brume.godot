@@ -1,0 +1,22 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://shaders/terrain.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://assets/materials/noise_soft.tres" id="2_noise"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/noise_tex = ExtResource("2_noise")
+shader_parameter/grass_a = Color(0.165, 0.243, 0.129, 1)
+shader_parameter/grass_b = Color(0.298, 0.365, 0.192, 1)
+shader_parameter/dry_grass = Color(0.443, 0.427, 0.239, 1)
+shader_parameter/dirt_col = Color(0.278, 0.224, 0.157, 1)
+shader_parameter/path_col = Color(0.345, 0.294, 0.216, 1)
+shader_parameter/rock_col = Color(0.322, 0.318, 0.31, 1)
+shader_parameter/silt_col = Color(0.322, 0.298, 0.239, 1)
+shader_parameter/macro_scale = 0.011
+shader_parameter/detail_scale = 0.135
+shader_parameter/slope_start = 0.72
+shader_parameter/slope_end = 0.93
+shader_parameter/rough_grass = 0.95
+shader_parameter/rough_rock = 0.68

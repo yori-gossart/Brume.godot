@@ -1,0 +1,40 @@
+[gd_scene load_steps=5 format=3]
+
+; The player. Capsule spans y = 0 .. 1.6, so the body origin IS the feet:
+; the model sits at the origin with no offset to get wrong, which is what
+; keeps the character standing on the ground instead of in it (section 17).
+
+[ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_player"]
+[ext_resource type="PackedScene" path="res://assets/characters/player_hooded_scout.glb" id="2_model"]
+[ext_resource type="Script" path="res://scripts/player/interactor.gd" id="3_interactor"]
+
+[sub_resource type="CapsuleShape3D" id="Capsule_body"]
+radius = 0.33
+height = 1.6
+
+[sub_resource type="SphereShape3D" id="Sphere_reach"]
+radius = 2.7
+
+[node name="Player" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("1_player")
+
+[node name="Body" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+shape = SubResource("Capsule_body")
+
+[node name="ModelPivot" type="Node3D" parent="."]
+
+[node name="Model" parent="ModelPivot" instance=ExtResource("2_model")]
+
+[node name="Interactor" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 4
+monitoring = true
+monitorable = false
+script = ExtResource("3_interactor")
+
+[node name="Reach" type="CollisionShape3D" parent="Interactor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("Sphere_reach")

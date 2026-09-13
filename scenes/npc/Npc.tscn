@@ -1,0 +1,31 @@
+[gd_scene load_steps=4 format=3]
+
+; A nomad who is not the player: KayKit "Barbarian" body, visibly heavier and
+; differently textured than the hooded scout (section 24).
+
+[ext_resource type="Script" path="res://scripts/npc/npc_controller.gd" id="1_npc"]
+[ext_resource type="PackedScene" path="res://assets/characters/npc_sturdy.glb" id="2_model"]
+
+[sub_resource type="CapsuleShape3D" id="Capsule_npc"]
+radius = 0.36
+height = 1.7
+
+[node name="Npc" type="CharacterBody3D"]
+collision_layer = 16
+collision_mask = 1
+script = ExtResource("1_npc")
+
+[node name="Body" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+shape = SubResource("Capsule_npc")
+
+[node name="ModelPivot" type="Node3D" parent="."]
+
+[node name="Model" parent="ModelPivot" instance=ExtResource("2_model")]
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+path_desired_distance = 0.7
+target_desired_distance = 1.1
+path_height_offset = 0.0
+avoidance_enabled = false
+debug_enabled = false

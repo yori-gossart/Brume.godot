@@ -1,0 +1,25 @@
+[gd_scene load_steps=3 format=3]
+
+; ANIMAL_ASSET_BLOCKED — this is a labelled placeholder, see
+; scripts/animals/animal_placeholder.gd and docs/ASSET_LICENSES.md.
+
+[ext_resource type="Script" path="res://scripts/animals/animal_placeholder.gd" id="1_animal"]
+
+[sub_resource type="CapsuleShape3D" id="Capsule_animal"]
+radius = 0.26
+height = 0.8
+
+[node name="Animal" type="CharacterBody3D"]
+collision_layer = 16
+collision_mask = 1
+script = ExtResource("1_animal")
+
+[node name="Body" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+shape = SubResource("Capsule_animal")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+path_desired_distance = 0.6
+target_desired_distance = 1.0
+avoidance_enabled = false
+debug_enabled = false

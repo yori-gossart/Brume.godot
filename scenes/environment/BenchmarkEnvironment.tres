@@ -1,0 +1,61 @@
+[gd_resource type="Environment" load_steps=3 format=3]
+
+; Lighting and atmosphere for the benchmark (section 33).
+;
+; Constrained to what the MOBILE renderer actually supports: sky, ambient
+; from sky, tonemapping, depth fog and glow. SSAO, SSIL, SDFGI and VOLUMETRIC
+; FOG are Forward+ only and are deliberately absent — the Brume is built out
+; of geometry instead (see scripts/fog/fog_wall.gd).
+;
+; The depth fog is tuned to hand off to the Brume: same violet cast, so the
+; far distance desaturates into the curtain instead of ending at it.
+
+[sub_resource type="ProceduralSkyMaterial" id="Sky_material"]
+sky_top_color = Color(0.208, 0.271, 0.384, 1)
+sky_horizon_color = Color(0.529, 0.541, 0.576, 1)
+sky_curve = 0.18
+sky_energy_multiplier = 1.0
+ground_bottom_color = Color(0.122, 0.133, 0.153, 1)
+ground_horizon_color = Color(0.4, 0.408, 0.431, 1)
+ground_curve = 0.12
+ground_energy_multiplier = 1.0
+sun_angle_max = 18.0
+sun_curve = 0.08
+
+[sub_resource type="Sky" id="Sky_main"]
+sky_material = SubResource("Sky_material")
+radiance_size = 1
+
+[resource]
+background_mode = 2
+sky = SubResource("Sky_main")
+ambient_light_source = 3
+ambient_light_color = Color(0.541, 0.588, 0.643, 1)
+ambient_light_sky_contribution = 0.85
+ambient_light_energy = 1.0
+reflected_light_source = 2
+tonemap_mode = 2
+tonemap_exposure = 1.05
+tonemap_white = 1.2
+fog_enabled = true
+fog_mode = 0
+fog_light_color = Color(0.451, 0.427, 0.522, 1)
+fog_light_energy = 1.0
+fog_sun_scatter = 0.12
+fog_density = 0.0030
+fog_aerial_perspective = 0.45
+fog_sky_affect = 0.55
+fog_height = 6.0
+fog_height_density = 0.035
+glow_enabled = true
+glow_normalized = true
+glow_intensity = 0.42
+glow_strength = 1.0
+glow_bloom = 0.06
+glow_blend_mode = 1
+glow_hdr_threshold = 1.05
+glow_hdr_scale = 2.0
+adjustment_enabled = true
+adjustment_brightness = 1.02
+adjustment_contrast = 1.06
+adjustment_saturation = 1.04

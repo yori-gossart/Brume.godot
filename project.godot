@@ -1,0 +1,62 @@
+; Engine configuration file.
+; Fog Nomad — Godot Production Benchmark 0.1
+;
+; Renderer:   MOBILE  (never Forward+ — see docs/BENCHMARK_REPORT.md)
+; Language:   GDScript only (no C#, no GDExtension, no editor plugin)
+; Orientation:PORTRAIT, reference window 720 x 1280
+;
+; This file is intentionally kept minimal and hand-readable so it can be
+; opened and edited from the Godot Editor for Android on a phone.
+
+config_version=5
+
+[application]
+
+config/name="Fog Nomad — Godot Benchmark"
+config/description="Production benchmark 0.1 — comparison target for Fog Nomad 0.7.2 (three.js).
+Single hand-authored 280 x 280 m scene. Mobile renderer, GDScript only, portrait."
+config/version="0.1"
+run/main_scene="res://scenes/BenchmarkWorld.tscn"
+config/features=PackedStringArray("4.3", "Mobile")
+config/icon="res://icon.svg"
+boot_splash/bg_color=Color(0.055, 0.063, 0.086, 1)
+boot_splash/show_image=false
+
+[autoload]
+
+Quality="*res://scripts/quality.gd"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/size/resizable=true
+window/handheld/orientation=1
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/vsync/vsync_mode=1
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[physics]
+
+3d/default_gravity=18.0
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
+lights_and_shadows/directional_shadow/size=2048
+lights_and_shadows/directional_shadow/size.mobile=1536
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=1
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality.mobile=0
+anti_aliasing/quality/msaa_3d=1
+anti_aliasing/quality/msaa_3d.mobile=1
+anti_aliasing/quality/screen_space_aa=0
+scaling_3d/mode=0
+textures/default_filters/anisotropic_filtering_level=1
+environment/defaults/default_clear_color=Color(0.086, 0.102, 0.137, 1)

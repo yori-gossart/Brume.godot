@@ -1,0 +1,24 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Godot-specific ignores
+.import/
+export.cfg
+export_presets.cfg
+
+# Imported translations (automatically generated from CSV files)
+*.translation
+
+# Mono-specific ignores (unused: this project is GDScript only)
+.mono/
+data_*/
+mono_crash.*.json
+
+# System / editor noise
+.DS_Store
+Thumbs.db
+*~
+
+# Build output of tools/make_zip.sh
+/build/

@@ -1,0 +1,14 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+; One material for every model from the KayKit Medieval Hexagon pack: they
+; all share a single 1024 atlas, so overriding them with one material means
+; the whole forest can batch instead of carrying a material each.
+
+[ext_resource type="Texture2D" path="res://assets/environment/nature/hexagons_medieval.png" id="1_atlas"]
+
+[resource]
+albedo_texture = ExtResource("1_atlas")
+roughness = 0.94
+metallic = 0.0
+metallic_specular = 0.32
+texture_filter = 3

@@ -1,0 +1,25 @@
+[gd_resource type="NoiseTexture2D" load_steps=2 format=3]
+
+; A real tangent-space NORMAL MAP, not a grayscale height field.
+; Godot bakes the gradient for us (as_normal_map), which means the water
+; shader needs two texture samples instead of six finite differences —
+; the difference between "ripples" and "a frame budget" on a phone.
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_wave"]
+noise_type = 1
+seed = 4211
+frequency = 0.021
+fractal_type = 1
+fractal_octaves = 3
+fractal_lacunarity = 2.3
+fractal_gain = 0.45
+
+[resource]
+width = 256
+height = 256
+seamless = true
+seamless_blend_skirt = 0.2
+as_normal_map = true
+bump_strength = 5.5
+generate_mipmaps = true
+noise = SubResource("FastNoiseLite_wave")
