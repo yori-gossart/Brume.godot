@@ -44,9 +44,9 @@ func _ready() -> void:
 		global_position = _target.global_position + Vector3.UP * height
 		_yaw = _target.rotation.y
 	spring.spring_length = distance
-	# Collide with world geometry only; not with the player, the water volume
-	# or any pickup area.
-	spring.collision_mask = 1
+	# The spring arm dodges level geometry only — never characters, water,
+	# pickups or interaction volumes.
+	spring.collision_mask = Layers.WORLD_STATIC
 	spring.margin = 0.25
 	_apply()
 

@@ -16,6 +16,10 @@ class_name PlayerController
 ## physical gate that confirms it. They cannot disagree.
 
 signal state_changed(state: int)
+## Emitted when the ground underfoot changes kind. Footstep audio, VFX and
+## track-leaving all hang off this later (section 34); for 0.2 the debug HUD
+## is the consumer and the test suite is the judge.
+signal surface_changed(surface: int)
 
 enum State { LAND, WATER, SWIM }
 
@@ -55,6 +59,10 @@ enum State { LAND, WATER, SWIM }
 ## rather than under it.
 @export var swim_lift: float = 0.86
 
+## Who the player looks like. Left null, a default scout is built —
+## ocre, not green (section 7).
+@export var appearance: CharacterAppearance
+
 @onready var model_pivot: Node3D = $ModelPivot
 @onready var interactor: Node = $Interactor
 
@@ -66,6 +74,11 @@ var camera_yaw: float = 0.0              ## written by PlayerCamera each frame
 var water_depth: float = 0.0
 var in_water_volume: bool = false
 var horizontal_speed: float = 0.0
+## SurfaceType.Kind of the ground underfoot, read from the collider the
+## player is actually standing on (section 33).
+var current_surface: int = SurfaceType.Kind.UNKNOWN
+## The node that surface came from, for debugging a wrong answer.
+var surface_source: Node = null
 
 var _rig: LocomotionRig
 var _facing: float = 0.0
@@ -77,10 +90,14 @@ var _bob: float = 0.0
 
 func _ready() -> void:
 	_model_base_y = model_pivot.position.y
-	var model: Node3D = model_pivot.get_child(0)
-	LocomotionRig.hide_weapons(model)
+	if appearance == null:
+		appearance = CharacterAppearance.make_default()
+	var model := CharacterBuilder.build(model_pivot, appearance)
+	if model == null:
+		model = model_pivot.get_child(0)
 	_rig = LocomotionRig.new()
 	_rig.setup(model)
+	SoftBodyAvoidance.register(self)
 	floor_max_angle = deg_to_rad(52.0)
 	floor_snap_length = 0.45
 	floor_stop_on_slope = true
@@ -102,8 +119,14 @@ func _physics_process(delta: float) -> void:
 	else:
 		_walk(delta, wish, target)
 
+	# Deflect around other characters without ever slowing down (section 60).
+	var push := SoftBodyAvoidance.push_for(self, Vector3(velocity.x, 0.0, velocity.z))
+	velocity.x += push.x
+	velocity.z += push.z
+
 	move_and_slide()
 
+	_resolve_surface()
 	horizontal_speed = Vector2(velocity.x, velocity.z).length()
 	_update_facing(delta, wish)
 	_update_model(delta)
@@ -196,15 +219,21 @@ func _swim(delta: float, wish: Vector3, target: float) -> void:
 
 func _update_water(delta: float) -> void:
 	water_depth = TerrainData.water_depth_at(global_position.x, global_position.z)
+	# How far the feet are below the surface. Negative means above it.
 	var feet_under := TerrainData.WATER_LEVEL - global_position.y
+	# Being ABOVE the waterline means not being in the water, however deep
+	# the river is underneath. 0.1 got away with keying the state off depth
+	# alone because there was nothing to stand on over water; the bridge
+	# broke that immediately — crossing it reported SWIM.
+	var submerged := feet_under > -0.02
 	var was := state
 	if state == State.SWIM:
-		if water_depth < swim_enter_depth - swim_exit_margin:
-			state = State.WATER if water_depth > 0.05 else State.LAND
+		if not submerged or water_depth < swim_enter_depth - swim_exit_margin:
+			state = State.WATER if (submerged and water_depth > 0.05) else State.LAND
 	else:
-		if water_depth >= swim_enter_depth:
+		if submerged and water_depth >= swim_enter_depth:
 			state = State.SWIM
-		elif water_depth > 0.05 and feet_under > -0.02:
+		elif submerged and water_depth > 0.05:
 			state = State.WATER
 		else:
 			state = State.LAND
@@ -284,6 +313,19 @@ func play_pickup_gesture() -> void:
 		_rig.play_pickup()
 
 
+## Re-dress the player from a (possibly edited) appearance. Used by the
+## customisation screen; rebuilds the model and re-binds the animation rig.
+func apply_appearance(a: CharacterAppearance) -> void:
+	appearance = a
+	var model := CharacterBuilder.build(model_pivot, appearance)
+	if model == null:
+		return
+	_rig = LocomotionRig.new()
+	_rig.setup(model)
+	_pitch = 0.0
+	model_pivot.rotation = Vector3(0.0, _facing, 0.0)
+
+
 func state_name() -> String:
 	match state:
 		State.SWIM: return "SWIM"
@@ -291,15 +333,57 @@ func state_name() -> String:
 		_: return "LAND"
 
 
-## Surface the feet are on. Extended later into footstep sounds (section 17).
-func surface_name() -> String:
+## What am I standing on?
+##
+## Water first, because depth is the thing a collider cannot express and
+## TerrainData already knows it exactly. Otherwise a single short ray
+## straight down, and the answer comes from the COLLIDER it hits — its
+## `surface` metadata or its `surface_*` group, walked up through its
+## ancestors so a whole building can be tagged once.
+##
+## Section 33 rules out reading the terrain texture, and rightly: the ground
+## material blends four colours by slope, height and noise, so recovering an
+## authored category from the rendered pixel would be guesswork that breaks
+## the first time someone retunes the shader.
+##
+## The path is the one analytic override. It is a property of the terrain
+## formula, not of a separate collider, so there is nothing to tag.
+func _resolve_surface() -> void:
+	var found := SurfaceType.Kind.UNKNOWN
+	var src: Node = null
+
 	if state == State.SWIM:
-		return "water/deep"
-	if state == State.WATER:
-		return "water/shallow"
-	if TerrainData.path_influence(global_position.x, global_position.z) > 0.45:
-		return "path"
-	return "ground"
+		found = SurfaceType.Kind.WATER_DEEP
+	elif state == State.WATER:
+		found = SurfaceType.Kind.WATER_SHALLOW
+	else:
+		var space := get_world_3d().direct_space_state
+		var from := global_position + Vector3.UP * 0.45
+		var to := global_position + Vector3.DOWN * 0.9
+		var q := PhysicsRayQueryParameters3D.create(from, to)
+		q.collision_mask = Layers.WORLD_STATIC
+		q.exclude = [get_rid()]
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty():
+			src = hit.get("collider")
+			found = SurfaceType.of_collider(src)
+		if found == SurfaceType.Kind.GRASS or found == SurfaceType.Kind.UNKNOWN:
+			# Trodden earth, straight from the terrain formula.
+			if TerrainData.path_influence(global_position.x, global_position.z) > 0.45:
+				found = SurfaceType.Kind.DIRT
+			elif found == SurfaceType.Kind.GRASS:
+				# Bare rock shows through on the steep ground.
+				if TerrainData.normal_at(global_position.x, global_position.z).y < 0.82:
+					found = SurfaceType.Kind.ROCK
+
+	surface_source = src
+	if found != current_surface:
+		current_surface = found
+		surface_changed.emit(found)
+
+
+func surface_name() -> String:
+	return SurfaceType.name_of(current_surface)
 
 
 func _on_water_volume_entered(_b: Node3D) -> void:

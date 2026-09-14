@@ -33,6 +33,7 @@
 [ext_resource type="PackedScene" path="res://scenes/fog/FogWall.tscn" id="15_fog"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MobileHud.tscn" id="16_hud"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugHud.tscn" id="17_debug"]
+[ext_resource type="PackedScene" path="res://scenes/ui/AppearanceScreen.tscn" id="18_appearance"]
 
 [node name="BenchmarkWorld" type="Node3D"]
 script = ExtResource("1_world")
@@ -85,8 +86,8 @@ cell_size = 2.0
 terrain_material = ExtResource("4_terrainmat")
 
 [node name="Water" type="Area3D" parent="."]
-collision_layer = 8
-collision_mask = 2
+collision_layer = 64
+collision_mask = 14
 script = ExtResource("5_water")
 cell_size = 1.5
 water_material = ExtResource("6_watermat")
@@ -151,6 +152,10 @@ far = 320.0
 [node name="MobileHud" parent="UI" instance=ExtResource("16_hud")]
 player_path = NodePath("../../Player")
 camera_path = NodePath("../../PlayerCamera")
+appearance_screen_path = NodePath("../AppearanceScreen")
+
+[node name="AppearanceScreen" parent="UI" instance=ExtResource("18_appearance")]
+player_path = NodePath("../../Player")
 
 [node name="DebugHud" parent="UI" instance=ExtResource("17_debug")]
 player_path = NodePath("../../Player")

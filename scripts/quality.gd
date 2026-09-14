@@ -27,9 +27,12 @@ func toggle() -> void:
 func level_name() -> String:
 	return "HIGH" if level == Level.HIGH else "LOW"
 
-## Fraction of the scattered vegetation that stays visible.
+## Fraction of the DECORATIVE scatter that stays visible — scrub, pebbles,
+## water plants. It never applies to anything with a collider: section 65
+## requires the collision world to be identical at both quality levels, so
+## trees and boulders are outside this entirely.
 func vegetation_ratio() -> float:
-	return 1.0 if level == Level.HIGH else 0.55
+	return 1.0 if level == Level.HIGH else 0.45
 
 ## Multiplier applied to every fog particle emitter's amount.
 func particle_ratio() -> float:
@@ -46,6 +49,7 @@ func shadow_distance() -> float:
 func shadows_enabled() -> bool:
 	return true
 
-## Whether small props (grass tufts, water plants, pebbles) are drawn.
+## Kept for shadow and effect budgets that genuinely switch off at LOW.
+## NOT used to gate scatter density any more — see vegetation_ratio().
 func small_props() -> bool:
 	return level == Level.HIGH

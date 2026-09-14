@@ -1,5 +1,5 @@
 ; Engine configuration file.
-; Fog Nomad — Godot Production Benchmark 0.1
+; Fog Nomad — Godot 0.2 — art identity, physical world, interaction
 ;
 ; Renderer:   MOBILE  (never Forward+ — see docs/BENCHMARK_REPORT.md)
 ; Language:   GDScript only (no C#, no GDExtension, no editor plugin)
@@ -12,15 +12,31 @@ config_version=5
 
 [application]
 
-config/name="Fog Nomad — Godot Benchmark"
-config/description="Production benchmark 0.1 — comparison target for Fog Nomad 0.7.2 (three.js).
-Single hand-authored 280 x 280 m scene. Mobile renderer, GDScript only, portrait."
-config/version="0.1"
+config/name="Fog Nomad — Godot 0.2"
+config/description="0.2 — art identity, physical world and interaction foundation.
+Mobile renderer, GDScript only, portrait. Physics layers: see
+docs/PHYSICS_CONVENTIONS.md. Main scene is the benchmark world; the review
+scene is scenes/testing/ArtPhysicsShowcase.tscn."
+config/version="0.2"
 run/main_scene="res://scenes/BenchmarkWorld.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
 config/icon="res://icon.svg"
 boot_splash/bg_color=Color(0.055, 0.063, 0.086, 1)
 boot_splash/show_image=false
+
+; Layer names, so the inspector checkboxes are labelled instead of numbered.
+; These MUST stay in step with scripts/physics_layers.gd — that file is the
+; source of truth and this block is its mirror for the editor UI.
+[layer_names]
+
+3d_physics/layer_1="WORLD_STATIC"
+3d_physics/layer_2="PLAYER"
+3d_physics/layer_3="NPC"
+3d_physics/layer_4="ANIMAL"
+3d_physics/layer_5="INTERACTABLE"
+3d_physics/layer_6="PICKUP"
+3d_physics/layer_7="WATER"
+3d_physics/layer_8="HAZARD_FOG"
 
 [autoload]
 

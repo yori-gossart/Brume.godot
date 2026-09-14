@@ -1,0 +1,178 @@
+[gd_scene load_steps=14 format=3]
+
+; ============================================================================
+; FOG NOMAD 0.2 — ART + PHYSICS + INTERACTION SHOWCASE
+;
+; The review scene (section 69). Same world, same systems, same scripts as
+; BenchmarkWorld.tscn — the only difference is `showcase_mode = true`, which
+; makes WorldRoot cluster the new content around the spawn so all of it can
+; be judged in a couple of minutes instead of being spread over 280 metres.
+;
+; Within about sixty metres of where you start: the ruin with its door and
+; its crystal pillar, the campfire, the scout cabin with its door, the
+; bridge over the river, four visibly different nomads, two animals, the
+; wood and crystal pickups, deep and shallow water, and the Brume.
+;
+; What is NOT here, and why: the fantasy monster and the goblin. Their packs
+; (Quaternius Ultimate Monsters, Ultimate Animated Character Pack) are
+; unreachable from this environment — see docs/ASSETS_TO_DOWNLOAD.md.
+;
+; Renderer: MOBILE. Portrait 720 x 1280. GDScript only.
+;
+; The terrain mesh, the water surface, the navigation mesh, the vegetation,
+; the two buildings and the whole Brume are BUILT AT LOAD by their scripts
+; from one shared height function (scripts/terrain_data.gd). That is not
+; procedural world generation — there is no seed, no chunking and no
+; streaming (section 37) — it is one fixed 280 x 280 m scene, written as
+; formulas instead of forty thousand baked vertices so it stays openable and
+; editable from a phone.
+; ============================================================================
+
+[ext_resource type="Script" path="res://scripts/world/world_root.gd" id="1_world"]
+[ext_resource type="Environment" path="res://scenes/environment/BenchmarkEnvironment.tres" id="2_env"]
+[ext_resource type="Script" path="res://scripts/world/terrain_builder.gd" id="3_terrain"]
+[ext_resource type="Material" path="res://assets/materials/mat_terrain.tres" id="4_terrainmat"]
+[ext_resource type="Script" path="res://scripts/world/water_body.gd" id="5_water"]
+[ext_resource type="Material" path="res://assets/materials/mat_water.tres" id="6_watermat"]
+[ext_resource type="Script" path="res://scripts/world/nav_builder.gd" id="7_nav"]
+[ext_resource type="Script" path="res://scripts/world/scatter.gd" id="8_scatter"]
+[ext_resource type="Material" path="res://assets/materials/mat_atlas_nature.tres" id="9_nature"]
+[ext_resource type="Material" path="res://assets/materials/mat_atlas_structures.tres" id="10_struct"]
+[ext_resource type="Script" path="res://scripts/player/player_camera.gd" id="11_camera"]
+[ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="12_player"]
+[ext_resource type="PackedScene" path="res://scenes/npc/Npc.tscn" id="13_npc"]
+[ext_resource type="PackedScene" path="res://scenes/animals/Animal.tscn" id="14_animal"]
+[ext_resource type="PackedScene" path="res://scenes/fog/FogWall.tscn" id="15_fog"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MobileHud.tscn" id="16_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/DebugHud.tscn" id="17_debug"]
+[ext_resource type="PackedScene" path="res://scenes/ui/AppearanceScreen.tscn" id="18_appearance"]
+
+[node name="ArtPhysicsShowcase" type="Node3D"]
+script = ExtResource("1_world")
+showcase_mode = true
+terrain_path = NodePath("Terrain")
+water_path = NodePath("Water")
+scatter_path = NodePath("Scatter")
+nav_path = NodePath("Navigation")
+fog_path = NodePath("FogWall")
+player_path = NodePath("Player")
+npc_path = NodePath("Npc")
+animal_path = NodePath("Animal")
+hud_path = NodePath("UI/MobileHud")
+debug_path = NodePath("UI/DebugHud")
+sun_path = NodePath("Sun")
+props_parent = NodePath("Props")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("2_env")
+
+; A low sun: long shadows across the relief, and a rim on the Brume.
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.6, -0.47, 0.647, 0, 0.809, 0.588, -0.8, 0.353, -0.485, 0, 42, 0)
+light_color = Color(1, 0.898, 0.769, 1)
+light_energy = 1.15
+light_angular_distance = 1.2
+shadow_enabled = true
+shadow_bias = 0.04
+shadow_normal_bias = 1.6
+shadow_blur = 1.1
+directional_shadow_mode = 1
+directional_shadow_split_1 = 0.14
+directional_shadow_split_2 = 0.38
+directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 55.0
+directional_shadow_pancake_size = 6.0
+
+; A very dim fill from the opposite side, so shaded faces are readable on a
+; small screen without lifting the whole image.
+[node name="Fill" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.6, 0.286, -0.747, 0, 0.934, 0.358, 0.8, -0.215, 0.56, 0, 30, 0)
+light_color = Color(0.647, 0.729, 0.855, 1)
+light_energy = 0.22
+shadow_enabled = false
+
+[node name="Terrain" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("3_terrain")
+cell_size = 2.0
+terrain_material = ExtResource("4_terrainmat")
+
+[node name="Water" type="Area3D" parent="."]
+collision_layer = 64
+collision_mask = 14
+script = ExtResource("5_water")
+cell_size = 1.5
+water_material = ExtResource("6_watermat")
+
+[node name="Navigation" type="NavigationRegion3D" parent="."]
+script = ExtResource("7_nav")
+cell_size = 2.5
+agent_radius = 0.65
+extent = 118.0
+
+[node name="Scatter" type="Node3D" parent="."]
+script = ExtResource("8_scatter")
+nature_material = ExtResource("9_nature")
+structures_material = ExtResource("10_struct")
+
+[node name="Props" type="Node3D" parent="."]
+
+[node name="FogWall" parent="." instance=ExtResource("15_fog")]
+
+; Exact spawn positions are decided at load by WorldRoot, which settles each
+; landmark onto ground that is dry, walkable and flat enough. These are only
+; sensible starting values.
+[node name="Player" parent="." instance=ExtResource("12_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 42)
+
+[node name="Npc" parent="." instance=ExtResource("13_npc")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4, 33)
+nav_builder_path = NodePath("../Navigation")
+
+[node name="Animal" parent="." instance=ExtResource("14_animal")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 4, 9)
+nav_builder_path = NodePath("../Navigation")
+player_path = NodePath("../Player")
+fog_path = NodePath("../FogWall")
+
+[node name="PlayerCamera" type="Node3D" parent="."]
+script = ExtResource("11_camera")
+target_path = NodePath("../Player")
+height = 2.0
+distance = 7.4
+follow_speed = 9.0
+min_pitch_deg = -38.0
+max_pitch_deg = 22.0
+look_sensitivity = 0.006
+auto_align = 0.9
+
+[node name="Pitch" type="Node3D" parent="PlayerCamera"]
+
+[node name="SpringArm3D" type="SpringArm3D" parent="PlayerCamera/Pitch"]
+spring_length = 7.4
+margin = 0.25
+collision_mask = 1
+
+[node name="Camera3D" type="Camera3D" parent="PlayerCamera/Pitch/SpringArm3D"]
+current = true
+fov = 60.0
+near = 0.08
+far = 320.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="MobileHud" parent="UI" instance=ExtResource("16_hud")]
+player_path = NodePath("../../Player")
+camera_path = NodePath("../../PlayerCamera")
+appearance_screen_path = NodePath("../AppearanceScreen")
+
+[node name="AppearanceScreen" parent="UI" instance=ExtResource("18_appearance")]
+player_path = NodePath("../../Player")
+
+[node name="DebugHud" parent="UI" instance=ExtResource("17_debug")]
+player_path = NodePath("../../Player")
+fog_path = NodePath("../../FogWall")
+npc_path = NodePath("../../Npc")
+animal_path = NodePath("../../Animal")
+world_path = NodePath("../..")

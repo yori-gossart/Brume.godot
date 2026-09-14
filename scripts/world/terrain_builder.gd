@@ -125,6 +125,10 @@ func _build() -> void:
 	cs.name = "TerrainCollision"
 	cs.shape = shape
 	add_child(cs)
+	# The ground's default surface. The path and the water override it
+	# analytically in PlayerController.current_surface(), because a single
+	# terrain collider cannot express "this bit is a trodden path".
+	SurfaceType.tag(self, SurfaceType.Kind.GRASS)
 
 
 func _grid_normal(i: int, j: int) -> Vector3:

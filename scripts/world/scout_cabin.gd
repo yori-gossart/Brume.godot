@@ -15,6 +15,7 @@ class_name ScoutCabin
 @export var door_width: float = 1.5
 
 var merged_away: int = 0
+var door: Door
 
 var footprint_radius: float:
 	get: return maxf(width, depth) * 0.72
@@ -23,8 +24,10 @@ var footprint_radius: float:
 func _ready() -> void:
 	var body := StaticBody3D.new()
 	body.name = "CabinCollision"
-	body.collision_layer = 1
+	body.collision_layer = Layers.WORLD_STATIC
 	body.collision_mask = 0
+	# Everything under here is planks and logs underfoot.
+	SurfaceType.tag(body, SurfaceType.Kind.WOOD)
 	add_child(body)
 
 	var log_mat := BuildKit.material(Color(0.396, 0.290, 0.196), 0.88)
@@ -96,6 +99,18 @@ func _ready() -> void:
 	BuildKit.box(self, body, plank, Vector3(hw - 0.8, 0.38, -hd + 0.9),
 		Vector3(0.8, 0.7, 0.8), Vector3(0, 0.3, 0))
 
+	# --- a real door in the opening ---------------------------------------
+	# 0.1 left a hole in the wall. A doorway with nothing in it is not a
+	# door, and section 22 wants a building that behaves like a building.
+	door = Door.new()
+	door.name = "CabinDoor"
+	door.leaf_width = door_width - 0.08
+	door.leaf_height = wall_height - 0.5
+	door.build_frame = false          # the wall already has its posts
+	door.open_angle_deg = -100.0      # swings outward, away from the bunk
+	door.position = Vector3(0.0, 0.14, hd - t * 0.5)
+	add_child(door)
+
 	# --- a warm interior light, which is also what makes the doorway read --
 	var lamp := OmniLight3D.new()
 	lamp.name = "CabinLamp"
@@ -112,4 +127,5 @@ func _ready() -> void:
 
 	# Nothing on the cabin moves, so it can all collapse to one mesh per
 	# material — about thirty draw calls down to five.
-	merged_away = BuildKit.merge_by_material(self)
+	# The door swings, so it is excluded from the static merge.
+	merged_away = BuildKit.merge_by_material(self, [door])

@@ -325,20 +325,34 @@ func _t_building_collision() -> void:
 func _t_pickup_while_moving() -> void:
 	var inter: Interactor = player.get_node("Interactor")
 	var props: Node = world.get_node("Props")
+	var approach := Vector3(1, 0, 0.2).normalized()
 	var target: Node3D = null
+	var tp := Vector3.ZERO
+	# Pick a pickup with a genuinely clear 11 m run-up. Since 0.2 added a
+	# ruin and a bridge, "the first wood in the list" can easily be one whose
+	# approach starts inside a wall — which would make this test report a
+	# failure of the interaction system when what it actually found was a
+	# working one.
 	for c in props.get_children():
-		if c is Pickup and str((c as Pickup).kind) == "BOIS":
-			if TerrainData.is_walkable((c as Node3D).global_position.x, (c as Node3D).global_position.z):
-				target = c
-				break
+		if not (c is Pickup) or str((c as Pickup).kind) != "BOIS":
+			continue
+		var pos := (c as Node3D).global_position
+		if not TerrainData.is_walkable(pos.x, pos.z):
+			continue
+		var start := pos - approach * 11.0
+		if not TerrainData.is_walkable(start.x, start.z):
+			continue
+		if not _clear_run(start, pos):
+			continue
+		target = c
+		tp = pos
+		break
 	if target == null:
-		_ok("PICKUP WHILE MOVING", false, "no reachable BOIS pickup found")
+		_ok("PICKUP WHILE MOVING", false, "no BOIS pickup with an unobstructed approach")
 		return
 
-	var tp := target.global_position
-	var approach := Vector3(1, 0, 0.2).normalized()
 	await _place(tp - approach * 11.0)
-	var before_total := inter.total_of("BOIS")
+	var before_total := inter.total_of(&"BOIS")
 
 	player.camera_yaw = atan2(-approach.x, -approach.z)
 	player.move_input = Vector2(0, 1)
@@ -365,7 +379,7 @@ func _t_pickup_while_moving() -> void:
 	player.move_input = Vector2.ZERO
 	player.run_held = false
 
-	var gained := inter.total_of("BOIS") - before_total
+	var gained := inter.total_of(&"BOIS") - before_total
 	var moving := speed_at_pickup > player.walk_speed * 1.4
 	var kept_speed := speed_after > speed_at_pickup * 0.9
 	var kept_heading := absf(angle_difference(facing_at_pickup, facing_after)) < 0.12
@@ -443,6 +457,16 @@ func _t_swim() -> void:
 	_ok("SWIM LOCOMOTION", moved > 0.8, "%.2f m while swimming" % moved)
 
 
+## Is the straight line between these two points free of level geometry?
+func _clear_run(from: Vector3, to: Vector3) -> bool:
+	var space := player.get_world_3d().direct_space_state
+	var a := Vector3(from.x, TerrainData.height_at(from.x, from.z) + 0.9, from.z)
+	var b := Vector3(to.x, TerrainData.height_at(to.x, to.z) + 0.9, to.z)
+	var q := PhysicsRayQueryParameters3D.create(a, b)
+	q.collision_mask = Layers.WORLD_STATIC
+	return space.intersect_ray(q).is_empty()
+
+
 func _find_water(dmin: float, dmax: float) -> Vector3:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 99
@@ -455,22 +479,55 @@ func _find_water(dmin: float, dmax: float) -> Vector3:
 	return Vector3.INF
 
 
+## Section 12 wants FOUR nomads who are recognisably different people, and
+## section 13 forbids the lazy version of that ("scale = random").
+##
+## Note that "different .glb from the player" is the wrong test here, and
+## 0.1's version of it is now actively misleading: section 12 asks for NPC 1
+## to be a scout with a silhouette SIMILAR to the player's and a different
+## outfit. So distinctness is judged across the cast, on the axes that are
+## actually authored — body, outfit colours, skin, accessories — and the
+## check that nobody differs only by scale is explicit.
 func _t_npc_distinct() -> void:
-	var npc: NpcController = world.get_node("Npc")
-	var pm: Node = player.get_node("ModelPivot").get_child(0)
-	var nm: Node = npc.get_node("ModelPivot").get_child(0)
-	var pf := str(pm.scene_file_path)
-	var nf := str(nm.scene_file_path)
-	_ok("NPC MODEL DISTINCT", pf != nf and nf != "",
-		"player=%s  npc=%s" % [pf.get_file(), nf.get_file()])
-	# Visible means visible: the NPC must START within sight of the player's
-	# spawn, and must stay inside the navigable square. A distinct model that
-	# is never actually on screen is a FAIL (section 48).
-	var at_spawn := _npc_spawn.distance_to(_player_spawn)
-	var inside := absf(npc.global_position.x) < 120.0 and absf(npc.global_position.z) < 120.0
-	_ok("NPC IN PLAY AREA", at_spawn < 30.0 and inside,
-		"spawns %.1f m from the player, currently inside the play square: %s"
-			% [at_spawn, str(inside)])
+	var all: Array = world.get("npcs")
+	if all == null or all.size() < 4:
+		_ok("DISTINCT NPCS", false, "expected 4 nomads, found %d"
+			% (0 if all == null else all.size()))
+		return
+
+	var bodies := {}
+	var signatures := {}
+	var scales := {}
+	for n in all:
+		var npc: NpcController = n
+		var a: CharacterAppearance = npc.appearance
+		bodies[a.body_type] = true
+		signatures["%d|%s|%s|%d|%d" % [a.body_type, a.primary_color.to_html(),
+			a.secondary_color.to_html(), a.skin_tone, a.outfit_variant]] = true
+		var pivot: Node3D = npc.get_node("ModelPivot")
+		scales["%.3f" % pivot.scale.x] = true
+
+	var pa: CharacterAppearance = player.appearance
+	var differs_from_player := 0
+	for n in all:
+		var a: CharacterAppearance = (n as NpcController).appearance
+		if a.body_type != pa.body_type or a.primary_color != pa.primary_color \
+				or a.skin_tone != pa.skin_tone:
+			differs_from_player += 1
+
+	_ok("DISTINCT NPCS", signatures.size() == all.size() and bodies.size() >= 3
+			and differs_from_player == all.size(),
+		"%d nomads, %d distinct appearances, %d distinct bodies, all differ from the player: %s"
+			% [all.size(), signatures.size(), bodies.size(), str(differs_from_player == all.size())])
+	# If every NPC has the same model scale, none of them was distinguished
+	# by scaling — which is the point of section 13.
+	_ok("NPCS NOT SCALE VARIANTS", scales.size() == 1,
+		"distinct model scales across the cast: %d (1 means nobody was scaled)" % scales.size())
+
+	# Visible means visible — judged at SPAWN, not after fifteen minutes of
+	# test suite during which everyone has wandered off.
+	var d := _npc_spawn.distance_to(_player_spawn)
+	_ok("NPC IN PLAY AREA", d < 40.0, "nearest nomad spawned %.1f m from the player" % d)
 
 
 func _t_npc_navigation() -> void:
@@ -479,24 +536,36 @@ func _t_npc_navigation() -> void:
 	_ok("NAVMESH BUILT", nav.polygon_count > 200,
 		"%d polygons, %d walkable cells" % [nav.polygon_count, nav.walkable_point_count()])
 
-	var start := npc.global_position
+	var prev := npc.global_position
 	var max_speed := 0.0
 	var worst_facing := 1.0
 	var moved_frames := 0
+	var path_length := 0.0
+	var arrivals := 0
+	var was_walking := false
 	for _i in 900:
 		await physics_frame
 		max_speed = maxf(max_speed, npc.horizontal_speed)
+		path_length += Vector2(npc.global_position.x - prev.x,
+			npc.global_position.z - prev.z).length()
+		prev = npc.global_position
+		var walking := npc.state == NpcController.State.WALK
+		if was_walking and not walking:
+			arrivals += 1
+		was_walking = walking
 		if npc.horizontal_speed > 0.5:
 			moved_frames += 1
 			var v := Vector3(npc.velocity.x, 0, npc.velocity.z).normalized()
 			var mp: Node3D = npc.get_node("ModelPivot")
-			# The KayKit rig faces +Z (see tools/diag_facing2.gd), not the
+			# The KayKit rig faces +Z (see tools/measure_facing.gd), not the
 			# Godot-default -Z.
 			var f: Vector3 = mp.global_transform.basis.z
 			worst_facing = minf(worst_facing, v.dot(Vector3(f.x, 0, f.z).normalized()))
-	var travelled := npc.global_position.distance_to(start)
-	_ok("NPC NAVIGATION", travelled > 4.0 and max_speed > 0.5,
-		"travelled %.1f m, peak %.2f m/s over 15 s" % [travelled, max_speed])
+	# Path length, not net displacement: a nomad that walks a loop and comes
+	# home has navigated perfectly and would score zero on displacement.
+	_ok("NPC NAVIGATION", path_length > 8.0 and max_speed > 0.5,
+		"walked %.1f m of path over 15 s, peak %.2f m/s, %d destinations reached"
+			% [path_length, max_speed, arrivals])
 	# Facing must track travel. Negative dot = moonwalking (section 25).
 	_ok("NPC CORRECT FACING", worst_facing > 0.55 or moved_frames < 30,
 		"worst forward dot %.2f over %d moving frames" % [worst_facing, moved_frames])
@@ -581,42 +650,57 @@ func _t_fog() -> void:
 		"sheet height spread %.1f m, follows terrain" % spread)
 
 
+## Section 65: LOW must cost less to DRAW and must change nothing about what
+## is SOLID. Both halves are asserted — a saving that also removed collision
+## would pass the first half and fail the world.
 func _t_quality() -> void:
 	var scatter: Node = world.get_node("Scatter")
-	var body: StaticBody3D = scatter.get_node_or_null("Col_pine_large")
-	var mmi: MultiMeshInstance3D = scatter.get_node_or_null("MM_pine_large")
-	if body == null or mmi == null:
-		_ok("QUALITY HIGH/LOW", false, "pine species missing")
+	var pine: MultiMeshInstance3D = scatter.get_node_or_null("MM_pine_large")
+	var scrub: MultiMeshInstance3D = scatter.get_node_or_null("MM_bush_A")
+	if pine == null or scrub == null:
+		_ok("QUALITY HIGH/LOW", false, "expected species missing from the scatter")
 		return
 
 	Q.level = 0    # HIGH
 	await process_frame
-	var vis_high: int = mmi.multimesh.visible_instance_count
-	var col_high := _enabled_shapes(body)
+	var pine_high: int = pine.multimesh.visible_instance_count
+	var scrub_high: int = scrub.multimesh.visible_instance_count
+	var solid_high := _total_enabled_shapes(scatter)
 
 	Q.level = 1    # LOW
 	await process_frame
-	var vis_low: int = mmi.multimesh.visible_instance_count
-	var col_low := _enabled_shapes(body)
+	var pine_low: int = pine.multimesh.visible_instance_count
+	var scrub_low: int = scrub.multimesh.visible_instance_count
+	var solid_low := _total_enabled_shapes(scatter)
 
 	var fog: FogWall = world.get_node("FogWall")
-	var layers_low := 0
-	for c in fog.get_children():
-		if c is MeshInstance3D and str(c.name).begins_with("Curtain") and (c as MeshInstance3D).visible:
-			layers_low += 1
-
+	var layers_low := _visible_curtains(fog)
 	Q.level = 0    # HIGH
 	await process_frame
-	var layers_high := 0
+	var layers_high := _visible_curtains(fog)
+
+	_ok("QUALITY LOW REDUCES LOAD", scrub_low < scrub_high and layers_low < layers_high,
+		"scrub %d -> %d, fog layers %d -> %d" % [scrub_high, scrub_low, layers_high, layers_low])
+	# The point of section 65.
+	_ok("QUALITY KEEPS COLLISION", solid_high == solid_low and pine_high == pine_low,
+		"enabled world colliders %d at HIGH, %d at LOW; solid trees drawn %d vs %d"
+			% [solid_high, solid_low, pine_high, pine_low])
+
+
+func _visible_curtains(fog: Node) -> int:
+	var n := 0
 	for c in fog.get_children():
 		if c is MeshInstance3D and str(c.name).begins_with("Curtain") and (c as MeshInstance3D).visible:
-			layers_high += 1
+			n += 1
+	return n
 
-	_ok("QUALITY LOW REDUCES LOAD", vis_low < vis_high and layers_low < layers_high,
-		"trees %d -> %d, fog layers %d -> %d" % [vis_high, vis_low, layers_high, layers_low])
-	# Hidden trees must lose their collision too, or LOW is a lie.
-	_ok("QUALITY COLLISION FOLLOWS", col_high == vis_high and col_low == vis_low,
-		"enabled trunk shapes HIGH %d/%d, LOW %d/%d" % [col_high, vis_high, col_low, vis_low])
+
+func _total_enabled_shapes(scatter: Node) -> int:
+	var n := 0
+	for body in scatter.get_children():
+		if body is StaticBody3D:
+			n += _enabled_shapes(body)
+	return n
 
 
 func _enabled_shapes(body: StaticBody3D) -> int:

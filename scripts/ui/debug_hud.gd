@@ -114,31 +114,49 @@ func _refresh() -> void:
 		lines.append("player   %s   depth %.2f m" % [_player.state_name(), _player.water_depth])
 		lines.append("speed    %.2f m/s   %s" % [
 			_player.horizontal_speed, "RUN" if _player.run_held else "walk"])
-		lines.append("surface  %s   in-volume %s" % [
+		lines.append("SURFACE  %s   in-volume %s" % [
 			_player.surface_name(), "yes" if _player.in_water_volume else "no"])
 		var inter := _player.get_node_or_null("Interactor") as Interactor
 		if inter:
-			lines.append("interact %s   bois %d  cristal %d" % [
-				(inter.prompt() if inter.has_candidate() else "—"),
-				inter.total_of("BOIS"), inter.total_of("CRISTAL")])
+			lines.append("interact %s" % (inter.prompt() if inter.has_candidate() else "—"))
+			lines.append("carried   bois %d   cristal %d   %.1f kg" % [
+				inter.total_of(&"BOIS"), inter.total_of(&"CRISTAL"), inter.carried_weight])
 		if _fog:
 			var d := _fog.distance_to(_player.global_position)
 			lines.append("brume    %.1f m %s" % [absf(d), "INSIDE" if d <= 0.0 else "ahead"])
 
-	if _npc or _animal:
+	if _player and _player.appearance:
+		lines.append("look     %s" % _player.appearance.describe())
+
+	# Section 70: the state of the things that are supposed to be alive.
+	var world_npcs: Array = (_world.get("npcs") if _world else null) as Array
+	if world_npcs and not world_npcs.is_empty():
 		lines.append("")
-		if _npc:
-			lines.append("npc      %s   %.2f m/s" % [_npc.state_name(), _npc.horizontal_speed])
-		if _animal:
-			lines.append("animal   %s   %.2f m/s   (PLACEHOLDER)" % [
-				_animal.state_name(), _animal.horizontal_speed])
+		for n in world_npcs:
+			var npc: NpcController = n
+			lines.append("npc %-11s %-6s %.2f m/s" % [
+				npc.role_name, npc.state_name(), npc.horizontal_speed])
+	elif _npc:
+		lines.append("")
+		lines.append("npc      %s   %.2f m/s" % [_npc.state_name(), _npc.horizontal_speed])
+
+	var world_animals: Array = (_world.get("animals") if _world else null) as Array
+	if world_animals and not world_animals.is_empty():
+		for a in world_animals:
+			var an: AnimalPlaceholder = a
+			lines.append("animal %-9s %-6s %.2f m/s %s" % [
+				an.species_name, an.state_name(), an.horizontal_speed,
+				"(PLACEHOLDER)" if AnimalSpecies.is_placeholder(an.species_index) else ""])
+	elif _animal:
+		lines.append("animal   %s   %.2f m/s   (PLACEHOLDER)" % [
+			_animal.state_name(), _animal.horizontal_speed])
 
 	if _world and _world.has_method("build_report"):
 		lines.append("")
 		lines.append_array(str(_world.call("build_report")).split("\n"))
 
 	lines.append("")
-	lines.append("[i] hide    F3 panel    F4 quality")
+	lines.append("[i] hide   [A] apparence   F3 panel   F4 quality")
 	_label.text = "\n".join(lines)
 
 

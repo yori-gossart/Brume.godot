@@ -1,12 +1,21 @@
-extends Area3D
+extends InteractableComponent
 class_name Pickup
 ##
-## A collectable resource. BOIS (wood) is the benchmark's test resource;
-## CRISTAL exists in small numbers near the beacon (section 39). There is
-## deliberately no inventory system behind this beyond a running count.
+## A collectable lying in the world.
+##
+## It is an InteractableComponent like everything else interactive, so the
+## player's scanner does not need to know pickups exist as a special case —
+## which is what it needed in 0.1.
+##
+## What it *is* comes from an ItemDefinition resource (section 31): name,
+## weight, category, rarity, prompt verb. Adding a resource type is a .tres
+## file, not a branch in this script.
 
-@export_enum("BOIS", "CRISTAL") var kind: String = "BOIS"
+@export var item: ItemDefinition
 @export var amount: int = 1
+## Fallback used when no ItemDefinition is assigned, and by WorldRoot when it
+## spawns pickups by name.
+@export_enum("BOIS", "CRISTAL") var kind: String = "BOIS"
 @export var spin_speed: float = 0.9
 @export var bob_height: float = 0.09
 @export var bob_speed: float = 1.7
@@ -22,12 +31,23 @@ func _ready() -> void:
 	_build_visual()
 	_base_y = _visual.position.y
 	_t = randf() * TAU
-	# Layer 4 is "collectable". The player's Interactor is the only thing
-	# that scans it, so pickups never interfere with movement collision.
-	collision_layer = 4
+	# PICKUP is a sensor layer, not an obstacle layer: no character's
+	# movement mask includes it, so a collectable can never block anyone.
+	collision_layer = Layers.PICKUP
 	collision_mask = 0
 	monitoring = false
 	monitorable = true
+	add_to_group(&"interactable")
+	add_to_group(&"pickup")
+	action = InteractableComponent.Action.TAKE
+	noun = item.display_name if item else kind.capitalize()
+	# Generous compared with a door: you are meant to grab this at a run,
+	# not line up with it.
+	interact_range = 2.6
+	interact_priority = 0
+	# A twig on the far side of a wall is not worth a raycast argument; but
+	# it is still scored on angle, so you cannot take what is behind you.
+	requires_line_of_sight = false
 
 
 func _process(delta: float) -> void:
@@ -109,34 +129,52 @@ func _build_visual() -> void:
 ## Called by WorldRoot after `kind` is assigned.
 func set_kind_visual(k: String) -> void:
 	kind = k
+	item = null
+	noun = _definition().display_name if _definition() else k.capitalize()
 	if is_inside_tree():
 		_build_visual()
 
 
-func can_collect() -> bool:
-	return not _taken
+func can_interact(_actor: Node3D) -> bool:
+	return enabled and not _taken
 
 
-func prompt_text() -> String:
-	return "RAMASSER" if kind == "BOIS" else "PRENDRE"
+func item_id() -> StringName:
+	return item.id if item else StringName(kind)
 
 
-func resource_kind() -> String:
-	return kind
-
-
-func resource_amount() -> int:
-	return amount
-
-
-## Collected. The object flies to the collector and disappears; the collector
-## is not touched in any way, which is what lets the pickup happen at a run.
-func collect(collector: Node3D) -> bool:
+## Taken. The object flies to the collector and disappears.
+##
+## Read what this does NOT do to the collector: nothing. No velocity change,
+## no rotation, no state change. That is the whole of section 28, and it is
+## why it works at a dead run.
+func perform(actor: Node3D) -> bool:
 	if _taken:
 		return false
 	_taken = true
+	set_state(&"TAKEN")
 	monitorable = false
 	set_deferred("monitoring", false)
+	var inter := actor.get_node_or_null("Interactor")
+	if inter and inter.has_method("register_item"):
+		inter.call("register_item", _definition(), amount)
+	interacted.emit(actor)
+	_fly_to(actor)
+	return true
+
+
+## The ItemDefinition for this pickup, loading the shared one by name when
+## the scene did not assign it directly.
+func _definition() -> ItemDefinition:
+	if item:
+		return item
+	var path := "res://assets/data/items/%s.tres" % ("wood" if kind == "BOIS" else "crystal")
+	if ResourceLoader.exists(path):
+		item = load(path)
+	return item
+
+
+func _fly_to(collector: Node3D) -> bool:
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(self, "global_position",
 		collector.global_position + Vector3.UP * 1.0, 0.28).set_trans(Tween.TRANS_CUBIC)

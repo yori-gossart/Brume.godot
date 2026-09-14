@@ -17,6 +17,7 @@ class_name MobileHud
 
 @export var player_path: NodePath
 @export var camera_path: NodePath
+@export var appearance_screen_path: NodePath
 
 @export_group("Layout")
 @export var stick_radius_ratio: float = 0.115
@@ -49,6 +50,9 @@ var _dbg_c: Vector2
 var _dbg_r: float
 var _qual_c: Vector2
 var _qual_r: float
+var _appear_c: Vector2
+var _appear_r: float
+var _appearance: Node
 ## Set by WorldRoot: the quality button only exists while the panel is open.
 var debug_visible: bool = false
 
@@ -62,11 +66,13 @@ signal debug_toggle_pressed
 func _ready() -> void:
 	_player = get_node_or_null(player_path) as PlayerController
 	_camera = get_node_or_null(camera_path) as PlayerCamera
+	_appearance = get_node_or_null(appearance_screen_path)
 	if _player:
 		_interactor = _player.get_node_or_null("Interactor") as Interactor
 		if _interactor:
 			_interactor.candidate_changed.connect(_on_candidate)
 			_interactor.collected.connect(_on_collected)
+			_interactor.interacted.connect(_on_interacted)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_layout()
@@ -89,6 +95,8 @@ func _layout() -> void:
 	_dbg_c = Vector2(s.x - m - _dbg_r, m + _dbg_r)
 	_qual_r = _dbg_r
 	_qual_c = Vector2(_dbg_c.x - _dbg_r * 2.5, _dbg_c.y)
+	_appear_r = _dbg_r
+	_appear_c = Vector2(m + _appear_r, m + _appear_r)
 	queue_redraw()
 
 
@@ -118,6 +126,12 @@ func _input(event: InputEvent) -> void:
 
 
 func _press(index: int, pos: Vector2) -> void:
+	# The customisation screen takes over input while it is open, so this
+	# only ever opens it.
+	if _appearance and _hit(pos, _appear_c, _appear_r * 1.4):
+		_appearance.call("toggle")
+		queue_redraw()
+		return
 	if _hit(pos, _dbg_c, _dbg_r * 1.4):
 		debug_toggle_pressed.emit()
 		queue_redraw()
@@ -194,14 +208,29 @@ func _do_interact() -> void:
 		_interactor.interact()
 
 
-func _on_candidate(p: Node) -> void:
-	_prompt = "" if p == null else str(p.call("prompt_text"))
+## The one interaction button relabels itself (sections 71, 72). It is not
+## joined by a second button; it becomes PRENDRE, OUVRIR, ALLUMER or
+## ACTIVER as appropriate, and it disappears entirely when there is nothing
+## in reach rather than sitting there greyed out and unpressable.
+func _on_candidate(c: InteractableComponent) -> void:
+	_prompt = "" if c == null else c.prompt()
 	queue_redraw()
 
 
-func _on_collected(kind: String, amount: int, total: int) -> void:
-	_flash_text = "+%d %s   (%d)" % [amount, kind, total]
+func _on_collected(item: ItemDefinition, amount: int, total: int) -> void:
+	var label := item.display_name if item else "?"
+	_flash_text = "+%d %s   (%d)" % [amount, label, total]
 	_flash = 1.6
+	queue_redraw()
+
+
+## Non-pickup interactions get a confirmation too, so opening a door or
+## lighting a fire reads as having happened.
+func _on_interacted(c: InteractableComponent, _actor: Node3D) -> void:
+	if c is Pickup:
+		return
+	_flash_text = c.noun if not c.noun.is_empty() else c.prompt()
+	_flash = 1.1
 	queue_redraw()
 
 
@@ -264,6 +293,11 @@ func _draw() -> void:
 		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.005)
 		_button(_act_c, _act_r, _prompt, font, fs, _act_touch != -1,
 			Color(0.98, 0.85, 0.45).lerp(Color(1, 1, 1), pulse * 0.35))
+
+	# --- customisation ----------------------------------------------------
+	if _appearance:
+		_button(_appear_c, _appear_r, "A", font, int(_appear_r * 0.95), false,
+			Color(0.85, 0.72, 0.5))
 
 	# --- debug toggle, and the quality switch it reveals -------------------
 	_button(_dbg_c, _dbg_r, "i", font, int(_dbg_r * 1.0), debug_visible,
