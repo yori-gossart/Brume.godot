@@ -469,8 +469,11 @@ func _place_actors(spawn: Vector2) -> void:
 			a2.nav_builder_path = NodePath("../Navigation")
 			a2.player_path = NodePath("../Player")
 			a2.fog_path = NodePath("../FogWall")
+			# BEFORE add_child: _ready() reads the species and builds the
+			# body from it, so assigning afterwards silently gives every
+			# animal the first species in the table.
+			a2.species_index = i
 			add_child(a2)
-		a2.species_index = i
 		a2.global_position = Vector3(p.x, TerrainData.height_at(p.x, p.y) + 0.1, p.y)
 		animals.append(a2)
 

@@ -1,19 +1,25 @@
-# Fog Nomad — Godot Production Benchmark 0.1
+# Fog Nomad — Godot 0.2
+## Art identity · physical world · interaction foundation
 
-Un banc d'essai pour répondre à **une** question : Godot nous ferait-il
-gagner assez en rendu, en environnement, en collisions, en physique et en
-ergonomie mobile pour justifier de quitter Three.js ?
+La 0.1 répondait à « Godot vaut-il le coup ». La **0.2** commence à
+construire : elle rend le monde **matériel**. On ne traverse plus un arbre,
+un rocher, un mur, une ruine, une tour, un pilier ni une porte fermée ; on
+ramasse en courant sans ralentir ; on sait sur quoi on marche.
 
 Ce dépôt est **séparé** de Fog Nomad 0.7.2 (three.js), qui reste la
 référence de gameplay et n'est modifié en aucune façon.
 
-> 📄 **Le rapport, les verdicts et l'auto-audit : [`docs/BENCHMARK_REPORT.md`](docs/BENCHMARK_REPORT.md)**
+> 📄 **Rapport 0.2, verdicts et auto-audit : [`docs/RAPPORT_0.2.md`](docs/RAPPORT_0.2.md)**
+> 🧱 **Vue d'ensemble 0.2 : [`docs/FOG_NOMAD_GODOT_0.2.md`](docs/FOG_NOMAD_GODOT_0.2.md)**
+> ⚠️ **Assets bloqués et à télécharger : [`docs/ASSETS_TO_DOWNLOAD.md`](docs/ASSETS_TO_DOWNLOAD.md)**
 > 📱 **Ouvrir sur téléphone : [`docs/ANDROID_PHONE_WORKFLOW.md`](docs/ANDROID_PHONE_WORKFLOW.md)**
-> ⚖️ **Licences des assets : [`docs/ASSET_LICENSES.md`](docs/ASSET_LICENSES.md)**
+> ⚖️ **Manifeste des assets : [`docs/ASSET_MANIFEST.md`](docs/ASSET_MANIFEST.md)** · **Physique : [`docs/PHYSICS_CONVENTIONS.md`](docs/PHYSICS_CONVENTIONS.md)** · **Interaction : [`docs/INTERACTION_SYSTEM.md`](docs/INTERACTION_SYSTEM.md)**
+>
+> 📄 Rapport 0.1 (archive) : [`docs/BENCHMARK_REPORT.md`](docs/BENCHMARK_REPORT.md)
 
 | | |
 | --- | --- |
-| ![La Brume](docs/screenshots/brume.jpg) | ![Tour-balise et nage](docs/screenshots/beacon_and_swim.jpg) |
+| ![Nomades](docs/screenshots02/nomads_and_hud.jpg) | ![Ruine](docs/screenshots02/ruin_interior.jpg) |
 
 ---
 
@@ -45,31 +51,46 @@ godot --path . --rendering-method mobile --resolution 720x1280
 
 ## Vérifier
 
-La suite de tests pilote la vraie scène à travers la vraie physique et
-mesure des nombres — elle n'affirme jamais qu'une chose marche parce qu'un
-nœud existe :
+Les suites pilotent la vraie scène à travers la vraie physique et mesurent
+des nombres. Rien n'est validé en lisant un nœud : l'audit de collision ne
+demande pas si un arbre a un `CollisionShape3D`, il lance le
+`CharacterBody3D` dessus et demande au serveur physique, image par image, si
+le corps s'est retrouvé **à l'intérieur** de la géométrie.
 
 ```bash
-godot --headless --path . --script tools/benchmark_tests.gd
+godot --headless --path . --script tools/benchmark_tests.gd       # 30 / 30
+godot --headless --path . --script tests/collision_world_test.gd  # 144 / 144
+godot --headless --path . --script tests/world_systems_test.gd    # 17 / 17
+godot --headless --path . --script tests/soak_test.gd             # 3 / 3
 ```
 
-29 vérifications : déplacement, course, orientation du modèle, glissement
-des pieds mesuré au pied posé, collisions arbre / rocher / bâtiment,
-ramassage en pleine course, détection d'eau, patauger, nage, distinction et
-navigation du NPC, fuite de l'animal, Brume, et les deux niveaux de qualité.
+**194 vérifications, 0 échec.** 12 obstacles × 6 approches × 2 niveaux de
+qualité pour les collisions ; portes ouvertes et fermées franchies pour de
+vrai ; six types de surface ; ramassage à pleine course ; évitement des PNJ
+et des animaux ; fuite devant la Brume ; cinq reconstructions du monde sans
+fuite de nœuds.
 
 ## Organisation
 
 ```
-scenes/            BenchmarkWorld.tscn + player/ world/ npc/ animals/
-                   environment/ fog/ ui/
-scripts/           toute la logique, GDScript
-  terrain_data.gd    LA fonction de terrain — tout le reste en dépend
-  locomotion_rig.gd  AnimationTree partagé joueur/NPC
-shaders/           terrain, eau, brume (rideau + nappe), cristal, volutes
-assets/            characters/ environment/ materials/ audio/
-docs/              rapport, licences, guide téléphone
-tools/             suite de tests, calibrations, captures
+scenes/            BenchmarkWorld.tscn (scène principale)
+  testing/           ArtPhysicsShowcase.tscn (scène de revue, §69)
+  player/ world/ npc/ animals/ environment/ fog/ ui/
+scripts/
+  physics_layers.gd  LA convention de couches — tout s'y réfère
+  terrain_data.gd    LA fonction de terrain
+  locomotion_rig.gd  AnimationTree partagé joueur/PNJ
+  data/              SurfaceType, ItemDefinition, WorldObjectDefinition
+  interaction/       InteractableComponent, Interactor
+  characters/        CharacterAppearance, catalogue, builder, évitement souple
+  world/             terrain, eau, dispersion, composition forestière,
+                     porte, ruine, pont, feu, pilier, cabane, tour
+shaders/            terrain, eau, brume, cristal, volutes, recoloration
+assets/
+  characters/ environment/ materials/ data/items/
+  quaternius/        vide — voir docs/ASSETS_TO_DOWNLOAD.md
+docs/               rapports, conventions, manifeste, guide téléphone
+tools/ tests/       suites de tests, calibrations, captures
 ```
 
 Le terrain, l'eau, le maillage de navigation, la végétation, les deux
@@ -86,8 +107,8 @@ téléphone**.
 tools/make_zip.sh
 ```
 
-Produit `build/fog-nomad-godot-benchmark-0.1.zip`, sans `.godot/` ni cache,
-importable directement par Godot.
+Produit `build/fog-nomad-godot-0.2.zip`, sans `.godot/` ni cache,
+importable directement par Godot (import à froid vérifié : 12,6 s).
 
 ## Licence
 

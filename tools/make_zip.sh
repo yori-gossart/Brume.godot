@@ -9,7 +9,7 @@
 # regenerated on first open), .git/, and the build output itself.
 set -euo pipefail
 
-NAME="fog-nomad-godot-benchmark-0.1"
+NAME="fog-nomad-godot-0.2"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/build"
 STAGE="$OUT/$NAME"
@@ -19,7 +19,7 @@ mkdir -p "$STAGE"
 
 # Everything the project needs, and nothing else.
 for item in project.godot icon.svg README.md .gitignore \
-            scenes scripts shaders assets docs tools; do
+            scenes scripts shaders assets docs tools tests; do
     [ -e "$ROOT/$item" ] && cp -R "$ROOT/$item" "$STAGE/"
 done
 

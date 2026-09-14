@@ -77,6 +77,8 @@ var _ear_length := 0.22
 var _tail_length := 0.22
 var _grazes := true
 var _graze_t := 0.0
+var _lost := 0.0
+var _last_threat := Vector3.INF
 
 
 func _ready() -> void:
@@ -206,6 +208,7 @@ func _physics_process(delta: float) -> void:
 		_flee_from(threat)
 	elif state == State.FLEE and threat == Vector3.INF and agent.is_navigation_finished():
 		state = State.IDLE
+		_last_threat = Vector3.INF
 		_wait = _rng.randf_range(idle_time.x, idle_time.y)
 
 	match state:
@@ -244,6 +247,7 @@ func _threat() -> Vector3:
 
 func _flee_from(threat: Vector3) -> void:
 	state = State.FLEE
+	_last_threat = threat
 	if _nav == null:
 		return
 	var away := global_position - threat
@@ -279,13 +283,49 @@ func _wander() -> void:
 func _move(delta: float, speed: float) -> void:
 	if agent.is_navigation_finished():
 		if state == State.FLEE:
-			_slow(delta)
+			# Finished the escape route but still frightened: keep going
+			# away rather than standing still next to the thing.
+			if _last_threat != Vector3.INF:
+				_flee_from(_last_threat)
+			else:
+				_slow(delta)
 		else:
 			state = State.IDLE
 			_wait = _rng.randf_range(idle_time.x, idle_time.y)
 		return
 	var to := agent.get_next_path_position() - global_position
 	to.y = 0.0
+
+	# FALLBACK. An animal that wanders off the navigation mesh — onto the
+	# bridge, into the shallows, behind a wall the mesh does not cover — gets
+	# a next-path-position equal to its own position, and freezes. A frozen
+	# deer standing calmly beside the player is worse than a slightly dumb
+	# one, so after a moment of getting nowhere it abandons the path and
+	# steers on instinct.
+	if to.length() < 0.05 or horizontal_speed < 0.1:
+		_lost += delta
+	else:
+		_lost = 0.0
+	if _lost > 0.5:
+		var away := Vector3.ZERO
+		if state == State.FLEE and _last_threat != Vector3.INF:
+			away = global_position - _last_threat
+		else:
+			away = Vector3(cos(_facing), 0.0, sin(_facing))
+		away.y = 0.0
+		if away.length() < 0.05:
+			away = Vector3(1, 0, 0)
+		# Steer towards ground it can actually stand on.
+		var best := away.normalized()
+		for i in 8:
+			var cand := away.normalized().rotated(Vector3.UP, (float(i) - 4.0) * 0.4)
+			var probe := global_position + cand * 3.0
+			if TerrainData.is_walkable(probe.x, probe.z):
+				best = cand
+				break
+		_steer(delta, best, speed)
+		return
+
 	if to.length() < 0.001:
 		return
 	_steer(delta, to.normalized(), speed)

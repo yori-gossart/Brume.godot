@@ -33,10 +33,18 @@ const BODIES := [
 		"id": "scout", "name": "Éclaireur",
 		"scene": "res://assets/characters/player_hooded_scout.glb",
 		"build": "svelte",
-		# The green hood sits alone at H 152-164 deg, S 0.87-1.00. Nothing
-		# else in this atlas is within 25 degrees of it at that saturation,
-		# which is what makes repainting it surgical.
-		"primary": {"hue": 0.437, "width": 0.050, "min_sat": 0.55, "min_val": 0.0},
+		# The green cloth is not one cluster, it is a whole region: the hood
+		# reads around H 140-158, the cape 157-166, the body trim 167-172
+		# and the collar 184. A narrow band centred on any one of them
+		# repaints that piece and leaves the others green, which reads as a
+		# bug rather than a colour choice — the first attempt recoloured the
+		# tunic and left a bright green hood.
+		#
+		# So the band covers the whole green region. That is safe HERE
+		# because of what else is in this atlas: leather at H 13-21, skin at
+		# H 23, and steel at H 200 with S 0.11 — the saturation floor
+		# excludes the steel and 120 degrees of hue excludes the rest.
+		"primary": {"hue": 0.417, "width": 0.190, "min_sat": 0.45, "min_val": 0.0},
 		"secondary": {"hue": 0.189, "width": 0.045, "min_sat": 0.45, "min_val": 0.0},
 		"accessories": {"cape": "Cape"},
 		"variants": [
@@ -92,7 +100,13 @@ const BODIES := [
 ## --- skin --------------------------------------------------------------
 ## The atlas skin cluster is H 21-26 deg, S 0.31-0.53, V 0.78-0.97; it is
 ## told apart from leather by brightness, hence the value floor in the shader.
-const SKIN_BAND := {"hue": 0.065, "width": 0.036, "min_val": 0.72, "max_sat": 0.60}
+## Measured per MESH, not per atlas (tools/measure_outfit_hues.gd):
+##   faces      H 23 deg   S 0.37-0.43   V 0.96
+##   leather    H 13-21    S 0.53-0.61   V 0.49-0.75
+## They overlap in hue, so BOTH a saturation ceiling and a brightness floor
+## are needed. The first version used 0.72/0.60 and repainted the scout's
+## leather leggings as skin.
+const SKIN_BAND := {"hue": 0.064, "width": 0.030, "min_val": 0.86, "max_sat": 0.48}
 
 const SKIN_TONES := [
 	{"name": "Clair", "color": Color(0.960, 0.784, 0.655)},
