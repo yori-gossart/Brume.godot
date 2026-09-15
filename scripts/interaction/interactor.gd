@@ -84,8 +84,20 @@ func _rescore() -> void:
 	var heading := _heading()
 	var cos_limit := cos(deg_to_rad(max_angle_deg))
 
+	var airborne := _is_airborne()
 	for c in _candidates:
 		if not is_instance_valid(c) or not c.can_interact(_actor):
+			continue
+		# SECTION 27 — jumping and interacting, and what happens when they
+		# meet. The rule is: an interaction never cancels a jump and a jump
+		# never cancels an interaction, but you cannot work a mechanism with
+		# your feet off the ground. Doors, fires and crank-like things need a
+		# stance; snatching something as you clear a wall does not.
+		#
+		# Enforced by dropping the candidate rather than by refusing the
+		# press, so the button is never offered for something that would then
+		# do nothing.
+		if airborne and not (c is Pickup):
 			continue
 		var to: Vector3 = c.focus_point() - origin
 		var flat := Vector3(to.x, 0.0, to.z)
@@ -109,6 +121,14 @@ func _rescore() -> void:
 
 	if best != current:
 		_set_current(best)
+
+
+## Are the actor's feet off the ground? Asked of the body, not of a flag, so
+## it is true for a fall as well as for a jump.
+func _is_airborne() -> bool:
+	if _actor is CharacterBody3D:
+		return not (_actor as CharacterBody3D).is_on_floor()
+	return false
 
 
 ## Is there level geometry between the player's chest and the object?

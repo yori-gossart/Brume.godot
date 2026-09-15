@@ -54,7 +54,7 @@ func _ready() -> void:
 	sb.content_margin_bottom = 8
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.position = Vector2(12, 12)
-	panel.size = Vector2(330, 10)
+	panel.size = Vector2(350, 10)
 	add_child(panel)
 
 	_label = Label.new()
@@ -102,23 +102,38 @@ func _refresh() -> void:
 	var objs := rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)
 
 	var lines := PackedStringArray()
-	lines.append("FOG NOMAD — GODOT 0.2   ART + PHYSICS")
+	lines.append("NOMADSLAND — GODOT 0.2.1   MOVEMENT")
 	lines.append("FPS %d   min %d   avg %d" % [
 		Engine.get_frames_per_second(), int(_fps_min),
 		int(_fps_sum / maxf(_fps_n, 1))])
 	lines.append("draws %d   prims %s   objects %d" % [draws, _short(prims), objs])
 	lines.append("quality  %s        renderer  %s" % [Quality.level_name(), _renderer_name()])
 
+	var inter: Interactor = null
 	if _player:
+		# SECTION 35 — the movement read-out. Every line here is a number the
+		# controller actually decided with, not a derived nicety: if moving
+		# feels wrong, this panel is where the disagreement shows up. TARGET
+		# next to SPEED is the important pair — a target the speed never
+		# reaches means acceleration is the problem, not the top speed.
+		inter = _player.get_node_or_null("Interactor") as Interactor
 		lines.append("")
-		lines.append("player   %s   depth %.2f m" % [_player.state_name(), _player.water_depth])
-		lines.append("speed    %.2f m/s   %s" % [
-			_player.horizontal_speed, "RUN" if _player.run_held else "walk"])
+		lines.append("STATE    %-5s %-8s %s" % [
+			_player.state_name(), _player.air_name(), _player.tier_name()])
+		lines.append("SPEED    %.2f / %.2f m/s   (%s)" % [
+			_player.horizontal_speed, _player.target_speed,
+			"RUN" if _player.run_held else "walk"])
+		lines.append("V-VEL    %+.2f m/s   GROUNDED %s   fall %.2f m" % [
+			_player.velocity.y, "yes" if _player.is_grounded else "NO",
+			_player.fall_distance])
+		lines.append("COYOTE   %.3f s   BUFFER %.3f s   jumps %d" % [
+			_player.coyote_left, _player.jump_buffer_left, _player.jumps_made])
+		lines.append("SLOPE    %.1f deg   steps %d   depth %.2f m" % [
+			_player.slope_angle, _player.steps_climbed, _player.water_depth])
 		lines.append("SURFACE  %s   in-volume %s" % [
 			_player.surface_name(), "yes" if _player.in_water_volume else "no"])
-		var inter := _player.get_node_or_null("Interactor") as Interactor
 		if inter:
-			lines.append("interact %s" % (inter.prompt() if inter.has_candidate() else "—"))
+			lines.append("INTERACT %s" % (inter.prompt() if inter.has_candidate() else "—"))
 			lines.append("carried   bois %d   cristal %d   %.1f kg" % [
 				inter.total_of(&"BOIS"), inter.total_of(&"CRISTAL"), inter.carried_weight])
 		if _fog:
@@ -156,7 +171,7 @@ func _refresh() -> void:
 		lines.append_array(str(_world.call("build_report")).split("\n"))
 
 	lines.append("")
-	lines.append("[i] hide   [A] apparence   F3 panel   F4 quality")
+	lines.append("[i] hide  [A] apparence  ESPACE saut  MAJ sprint  F3  F4")
 	_label.text = "\n".join(lines)
 
 

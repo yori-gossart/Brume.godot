@@ -128,3 +128,100 @@ un.
 Jamais de collision triangle par triangle sur un modèle d'auteur (§19, §21).
 Le terrain est la seule exception, et c'est justifié : sa forme *est* la
 surface jouable, et l'approximer produirait des pieds qui flottent.
+
+
+---
+
+# 0.2.1 — DÉPLACEMENT, SAUT, FRANCHISSEMENT
+
+Ces conventions s'ajoutent aux précédentes ; rien au-dessus n'a changé.
+
+## Les nombres vivent à un seul endroit
+
+`scripts/player/player_movement_config.gd` est **la** source des vitesses,
+accélérations, rotations, du saut, de la hauteur de pas et des seuils d'eau
+du joueur. Le contrôleur, la caméra, l'interface tactile et les suites de
+tests la lisent ; **aucun d'eux n'en redéfinit une valeur**.
+
+Le contrôleur expose encore `walk_speed`, `run_speed`, `sprint_speed`,
+`swim_speed`, `step_height`, `jump_height` — mais en **lecture seule**, comme
+accesseurs qui renvoient la valeur de la config. Ce sont des raccourcis pour
+les appelants ; ce ne sont pas des copies, et ils ne peuvent pas diverger.
+
+`scenes/player/PlayerMovement.tres` est l'instance éditable dans
+l'inspecteur. Elle n'override volontairement rien, pour que les défauts
+lisibles du script restent la référence et qu'un réglage fait depuis le
+téléphone soit **une ligne dans le diff**.
+
+`PlayerMovementConfig.out_of_spec()` valide chaque valeur contre les
+fourchettes du brief et `tests/movement_test.gd` l'appelle : une valeur
+aberrante est attrapée par un test.
+
+## Le saut est dérivé, pas réglé
+
+On choisit la **hauteur** et le **temps jusqu'à l'apex**. L'impulsion et la
+gravité en sont les conséquences :
+
+```
+v0 = 2 * hauteur / apex
+g  = 2 * hauteur / apex²
+```
+
+La gravité de descente est `g × fall_gravity_multiplier` (1.45). Régler une
+gravité puis chercher une impulsion donne des sauts lunaires.
+
+Le joueur **n'utilise pas** `physics/3d/default_gravity` : les PNJ et les
+animaux si (18.0 m/s²), et c'est voulu — leur chute n'a pas à suivre le
+réglage du saut du joueur.
+
+## Franchir : `test_move` d'abord, `move_and_collide` ensuite
+
+`PlayerController._probe_traverse(dir, rise, reach)` fait, dans cet ordre :
+
+1. `test_move` vers le haut de `rise` — y a-t-il la place ?
+2. `test_move` vers l'avant de `reach` depuis là-haut — le passage est-il
+   libre ?
+3. `test_move` vers le bas — y a-t-il de quoi se poser, **et sa normale
+   est-elle plus douce que `max_slope_deg`** ?
+
+Seulement si les trois répondent oui, trois `move_and_collide()` exécutent
+le mouvement. **Jamais d'écriture de `position`.** Si l'une répond non,
+l'obstacle est un mur et le joueur reste bloqué devant.
+
+Deux gardes sont obligatoires et ont chacune été ajoutées après un bug réel :
+
+- le déclencheur est `is_on_wall()`, pas une comparaison de distance seule :
+  glisser sur une pente rend moins de distance horizontale que demandé, donc
+  un test de distance nu arme la sonde à chaque frame et transforme une
+  falaise en escalier ;
+- la normale d'atterrissage doit être praticable, sinon la sonde contourne
+  `floor_max_angle` par le haut.
+
+L'intention de vitesse est capturée **avant** `move_and_slide()` et rendue
+après une marche franchie : lue après, elle vaut zéro contre le mur.
+
+## Un vault réutilisera la même sonde
+
+`_probe_traverse` prend la montée et la portée en paramètres exactement pour
+ça. La 0.2.1 n'implémente pas de vault (section 17 demande la structure, pas
+la fonctionnalité) et n'a pas ajouté de code mort pour le préfigurer.
+
+## Les ouvertures sont l'absence de collider
+
+Règle déjà posée en 0.2 pour les murs à trous, et **vérifiée** en 0.2.1 :
+une fenêtre doit être un trou dans la course de mur, rebouché sous l'allège
+et au-dessus du linteau. Empiler les blocs d'une fenêtre sur un mur plein
+donne un mur doublé et aucune fenêtre — c'était le cas du mur ouest de la
+ruine jusqu'ici.
+
+`tools/probe_openings.gd` imprime, mur par mur, où les colliders ont
+réellement des trous, au genou et à la poitrine. C'est le premier outil à
+sortir quand « ça bloque et je ne vois pas quoi ».
+
+## Un bâtiment posé sur une pente a une lèvre
+
+Un dallage horizontal sur un terrain incliné dépasse du sol côté aval. Une
+arête de pierre de 0.38 m ressemble à une marche et n'en est pas une. La
+règle : **toute transition sol → bâtiment doit tenir dans `step_height`**,
+au besoin en ajoutant des assises basses qui découpent la lèvre. C'est ce
+que fait le stylobate de la ruine.

@@ -86,22 +86,48 @@ func _ready() -> void:
 
 	# --- approaches: ramps that meet the ground ---------------------------
 	# Without these the bridge is a step, and a step at deck height is a wall.
+	#
+	# 0.2.1 REBUILT THESE, because 0.2's version had two faults that between
+	# them made crossing the bridge feel like an obstacle course.
+	#
+	# 1. It sampled the terrain AT THE END OF THE DECK and ran the ramp down
+	#    to that height. At this ford the deck overhangs the water by four
+	#    metres, so the near ramp descended into the river and stopped there,
+	#    with the bank still ahead and a third of a metre higher.
+	# 2. It was five flat boxes in a row, which is a staircase, not a ramp —
+	#    and each of its steps was a ledge a walking character caught on.
+	#
+	# Now the ramp MARCHES OUTWARD until the ground rises to meet a line
+	# descending from the deck, and is built as one rotated slab: a single
+	# continuous surface with no seams to catch on, landing on real ground.
+	const MARCH_SLOPE := 0.42            ## the line the search descends along
+	const MARCH_STEP := 0.3
 	for zs: float in [-1.0, 1.0]:
 		var end_z: float = zs * (span * 0.5)
-		# Sample the terrain at the end of the deck IN WORLD SPACE: the
-		# bridge is usually rotated to cross the river, so offsetting the
-		# node's position along Z would sample the wrong bank entirely.
-		var world_end := global_transform * Vector3(0.0, 0.0, end_z)
-		var ground := TerrainData.height_at(world_end.x, world_end.z) - global_position.y
-		var drop := y - ground
-		if drop <= 0.05:
+		var reach := 0.0
+		var ground := y
+		var d := MARCH_STEP
+		while d <= 16.0:
+			# Sampled IN WORLD SPACE: the bridge is usually rotated to cross
+			# the river, so offsetting the node's position along Z would
+			# sample the wrong bank entirely.
+			var wp := global_transform * Vector3(0.0, 0.0, end_z + zs * d)
+			var g := TerrainData.height_at(wp.x, wp.z) - global_position.y
+			if g >= y - MARCH_SLOPE * d - 0.12:
+				reach = d
+				ground = g
+				break
+			d += MARCH_STEP
+		if reach < 0.4 or y - ground <= 0.05:
 			continue
-		var ramp_len := maxf(drop * 2.6, 1.5)
-		var steps := 5
-		for i in steps:
-			var f := (float(i) + 0.5) / float(steps)
-			BuildKit.box(self, body, plank,
-				Vector3(0, lerpf(y, ground + 0.08, f), end_z + zs * ramp_len * f),
-				Vector3(deck_width * 0.96, deck_thickness + 0.16, ramp_len / float(steps) + 0.12))
+		var low := ground + 0.06
+		var ang := atan2(y - low, reach)
+		# Half a metre of overlap at each end: under the deck at the top, and
+		# into the ground at the bottom, so neither joint can open a gap.
+		var slab := sqrt((y - low) * (y - low) + reach * reach) + 0.6
+		BuildKit.box(self, body, plank,
+			Vector3(0.0, (y + low) * 0.5 - 0.05, end_z + zs * reach * 0.5),
+			Vector3(deck_width * 0.96, deck_thickness + 0.14, slab),
+			Vector3(zs * ang, 0.0, 0.0))
 
 	BuildKit.merge_by_material(self, [])

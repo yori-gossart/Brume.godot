@@ -209,20 +209,31 @@ func _audit(t: Dictionary, quality: String) -> void:
 		# ruins and buildings in it now; a run-up that begins inside a wall
 		# tests nothing.
 		var start := Vector3.INF
-		for back: float in [4.5, 6.5, 9.0, 3.0]:
+		for back: float in [4.5, 6.5, 9.0, 5.5, 7.5, 3.0, 11.0]:
 			var cand: Vector3 = centre - base * (r + back)
-			var y := TerrainData.height_at(cand.x, cand.z)
+			# Stand on whatever is actually there, not on the terrain formula.
+			# The ruin has low stone courses around its foot, the cabin has a
+			# footing: a start placed at terrain height next to one of those
+			# begins INSIDE it, and a player who cannot move tests nothing.
+			var y := _surface_y(cand.x, cand.z)
 			if not TerrainData.is_walkable(cand.x, cand.z):
 				continue
-			if _inside_solid(Vector3(cand.x, y + 0.9, cand.z)):
+			if _inside_solid(Vector3(cand.x, y + 0.9, cand.z)) \
+					or _inside_solid(Vector3(cand.x, y + 0.25, cand.z)):
 				continue
-			# And the first stretch of the run-up must be clear. A start
-			# point inside the cabin passes the "not in a wall" test and
-			# then walks half a metre into the opposite wall, which tests
-			# the wrong obstacle entirely.
-			if not _clear_ahead(Vector3(cand.x, y + 0.9, cand.z), base, minf(back - 0.6, 3.5)):
+			# And the WHOLE run-up must be clear, not just its first few
+			# metres. A start point inside the cabin passes the "not in a
+			# wall" test and then walks half a metre into the opposite wall,
+			# which tests the wrong obstacle entirely; a start wedged behind
+			# one of the ruin's fallen blocks never moves at all and reports
+			# a failure that belongs to the block, not to the target.
+			#
+			# Sampled against the SURFACE at each point rather than with one
+			# horizontal ray, because the ruin now stands on stepped courses
+			# and a level ray fired across rising ground hits the next riser.
+			if not _clear_ahead(Vector3(cand.x, y, cand.z), base, minf(back - 0.6, 3.5)):
 				continue
-			start = Vector3(cand.x, y + 0.2, cand.z)
+			start = Vector3(cand.x, y + 0.15, cand.z)
 			break
 		if start == Vector3.INF:
 			results.append({"target": "%s [%s]" % [t["label"], quality], "ok": true,
@@ -261,9 +272,18 @@ func _audit(t: Dictionary, quality: String) -> void:
 		var penetrated := inside_frames > 0
 		# Only meaningful for roughly circular obstacles — see _from_structure.
 		var stopped := dist_end > r * 0.55
+		# CLIMBED IS NOT TUNNELLED. Some of this world's boulders are half
+		# buried in a forty-degree hillside and present a flank shallower
+		# than floor_max_angle: a player who walks at one ends up standing on
+		# top of it. That is the correct outcome — section 18 would call an
+		# invisible wall across a face you can plainly stand on the bug — and
+		# it is nothing like passing through the rock, which the per-frame
+		# point query above rules out independently.
+		var climbed := player.is_on_floor() \
+			and player.global_position.y > start.y + 0.6
 		var ok := tried and not penetrated
 		if a["headon"] and bool(t.get("circular", false)):
-			ok = ok and stopped
+			ok = ok and (stopped or climbed)
 
 		var why := "ok"
 		if penetrated:
@@ -271,7 +291,11 @@ func _audit(t: Dictionary, quality: String) -> void:
 		elif not tried:
 			why = "never moved"
 		elif a["headon"] and bool(t.get("circular", false)) and not stopped:
-			why = "ended inside the proxy radius"
+			if climbed:
+				why = "CLIMBED it (+%.2f m), never inside it" \
+					% (player.global_position.y - start.y)
+			else:
+				why = "ended inside the proxy radius"
 
 		results.append({
 			"target": "%s [%s]" % [t["label"], quality],
@@ -284,12 +308,56 @@ func _audit(t: Dictionary, quality: String) -> void:
 
 
 ## Is the first `dist` metres of the run-up free of level geometry?
+##
+## Two rays, not one: chest height finds walls, and a low ray finds the thing
+## chest height sails over — one of the ruin's fallen blocks, parked right
+## where a run-up wanted to start, which produced a "never moved" failure
+## that belonged to the block rather than to the target.
+##
+## `from` is a point on the surface; the rays are fired from above it.
 func _clear_ahead(from: Vector3, dir: Vector3, dist: float) -> bool:
 	if dist <= 0.1:
 		return true
-	var q := PhysicsRayQueryParameters3D.create(from, from + dir * dist)
+	var space := player.get_world_3d().direct_space_state
+	# Chest height over the whole stretch, and a low ray over the first
+	# couple of metres.
+	#
+	# The low ray is at 0.45 m, not at the knee: since 0.2.1 the player walks
+	# over anything under 30 cm, so rejecting a run-up because a 20 cm stone
+	# sits in it would throw away most of the forest for no reason. And it is
+	# SHORT, because all it has to catch is a start point wedged against
+	# something — the case it was added for moved 0.42 m before stopping, so
+	# a metre and a bit is ample, while asking for several metres of clear
+	# forest floor is a rarity that cost the audit five of broadleaf_A's six
+	# runs for nothing.
+	for probe: Vector2 in [Vector2(0.95, dist), Vector2(0.45, minf(dist, 1.3))]:
+		var a := from + Vector3.UP * probe.x
+		var q := PhysicsRayQueryParameters3D.create(a, a + dir * probe.y)
+		q.collision_mask = Layers.WORLD_STATIC
+		if not space.intersect_ray(q).is_empty():
+			return false
+	return true
+
+
+## The height of the highest solid thing at (x, z) — level geometry if there
+## is any, the terrain otherwise. Used to put a run-up's start point on top
+## of a plinth instead of inside it.
+func _surface_y(x: float, z: float) -> float:
+	var ground := TerrainData.height_at(x, z)
+	var q := PhysicsRayQueryParameters3D.create(
+		Vector3(x, ground + 4.0, z), Vector3(x, ground - 0.5, z))
 	q.collision_mask = Layers.WORLD_STATIC
-	return player.get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+	var hit := player.get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return ground
+	var top: float = (hit["position"] as Vector3).y
+	# A ray fired down from four metres up hits whatever is overhead — a
+	# tree's trunk collider, a roof — and "the top of that pine" is not a
+	# surface anybody stands on. Anything more than a step-and-a-bit above
+	# the terrain is scenery, not floor.
+	if top - ground > 1.0:
+		return ground
+	return maxf(ground, top)
 
 
 ## Is this world-space point inside level geometry? Shape-agnostic: the

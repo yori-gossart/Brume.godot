@@ -9,7 +9,7 @@
 # regenerated on first open), .git/, and the build output itself.
 set -euo pipefail
 
-NAME="fog-nomad-godot-0.2"
+NAME="nomadsland-godot-0.2.1"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/build"
 STAGE="$OUT/$NAME"

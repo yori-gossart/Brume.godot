@@ -183,34 +183,49 @@ func _t_player_animation() -> void:
 	_ok("PLAYER ANIMATIONS", drift > 0.05 and tree.active,
 		"walking pose sweeps %.3f m (a T-pose would be 0.000)" % drift)
 
-	# --- foot sliding, walking --------------------------------------------
-	var walk_slide := await _foot_slide(lt, rt, sk, false)
-	var run_slide := await _foot_slide(lt, rt, sk, true)
+	# --- foot sliding ------------------------------------------------------
+	#
 	# Judged against the floor the clips themselves impose, measured by
 	# tools/calibrate_stride.gd at the optimal playback rate:
 	#   Walking_A  20.4% of body speed   Running_A  36.4%
 	# A run has a flight phase where neither foot is planted, so its floor is
 	# genuinely higher; the run threshold is not slack, it is physics.
 	# What these assert is that the rig is AT that optimum, not near it by luck.
-	_ok("NO FOOT SLIDING (walk)", walk_slide["ratio"] < 0.28,
-		"planted foot %.2f m/s vs body %.2f m/s = %.0f%% (clip floor 20%%)"
-			% [walk_slide["foot"], walk_slide["body"], walk_slide["ratio"] * 100.0])
-	_ok("NO FOOT SLIDING (run)", run_slide["ratio"] < 0.47,
-		"planted foot %.2f m/s vs body %.2f m/s = %.0f%% (clip floor 36%%)"
-			% [run_slide["foot"], run_slide["body"], run_slide["ratio"] * 100.0])
+	#
+	# 0.2.1 CHANGED WHICH CLIP COVERS WHICH TIER, so this had to change with
+	# it. At 0.2's speeds the WALK tier was 1.5 m/s and played Walking_A;
+	# at 3.4 m/s the same tier is a jog and honestly plays Running_A slowed to
+	# 0.88x — Walking_A at 4.4x would be a cartoon scurry, which is exactly
+	# what section 34 forbids. So the check now samples three points across
+	# the stick's range and judges each against the floor of the clip the rig
+	# ACTUALLY selected, asked of the rig rather than guessed from the speed.
+	# The half-stick sample is what still exercises Walking_A.
+	var floors := {"walk": 0.28, "run": 0.47, "idle": 0.28}
+	for probe: Dictionary in [
+			{"name": "half stick", "mag": 0.45, "run": false},
+			{"name": "walk tier", "mag": 1.0, "run": false},
+			{"name": "sprint", "mag": 1.0, "run": true}]:
+		var m := await _foot_slide(lt, rt, sk, bool(probe["run"]), float(probe["mag"]))
+		var gait := str(m["gait"])
+		var limit := float(floors.get(gait, 0.47))
+		_ok("NO FOOT SLIDING (%s)" % probe["name"], m["ratio"] < limit,
+			"%s clip at %.2f m/s: planted foot %.2f m/s = %.0f%% (floor %.0f%%)"
+				% [gait, m["body"], m["foot"], m["ratio"] * 100.0, limit * 100.0])
 
 
 ## Median world-space speed of whichever foot is planted, over ~2 s of
 ## steady-state locomotion.
-func _foot_slide(lt: int, rt: int, sk: Skeleton3D, run: bool) -> Dictionary:
+func _foot_slide(lt: int, rt: int, sk: Skeleton3D, run: bool, mag: float = 1.0) -> Dictionary:
 	await _place(Vector3(8, 0, 46))
 	player.camera_yaw = 0.0
-	player.move_input = Vector2(0, 1)
+	player.move_input = Vector2(0, mag)
 	player.run_held = run
 	# Let the speed and the blend settle before measuring.
 	for _i in 70:
 		await physics_frame
 	var body_speed := player.horizontal_speed
+	# Which clip the rig settled on, straight from the rig.
+	var gait := player.gait_name()
 	# The true world path of the foot, not an approximation: bone poses are
 	# skeleton-local, and between them and the world sit the model pivot's
 	# yaw AND the terrain lean the controller applies. Adding only the body
@@ -232,7 +247,7 @@ func _foot_slide(lt: int, rt: int, sk: Skeleton3D, run: bool) -> Dictionary:
 	player.run_held = false
 	samples.sort()
 	var med: float = samples[samples.size() / 2]
-	return {"foot": med, "body": body_speed,
+	return {"foot": med, "body": body_speed, "gait": gait,
 		"ratio": med / maxf(body_speed, 0.001)}
 
 

@@ -55,6 +55,21 @@ func _ready() -> void:
 	BuildKit.box(self, _body, _stone_dark, Vector3(0, -0.12, 0),
 		Vector3(width + 0.6, 0.3, depth + 0.6))
 
+	# --- stylobate: two low courses around the outside --------------------
+	# 0.2.1, section 18. The ruin stands on sloping ground, so on the
+	# downhill side the flagstone floor finished about 0.38 m above the
+	# grass — a clean stone edge that looks like a step and behaved like a
+	# kerb nobody could get up. You could see the breach in the south wall
+	# and you could not walk into it.
+	#
+	# Two shallow courses turn that one lip into three of about 0.16 m, all
+	# of them inside the player's step height. They are also what a ruin of
+	# this kind would actually have under it.
+	BuildKit.box(self, _body, _stone_dark, Vector3(0, -0.28, 0),
+		Vector3(width + 1.8, 0.3, depth + 1.8))
+	BuildKit.box(self, _body, _stone_dark, Vector3(0, -0.44, 0),
+		Vector3(width + 3.0, 0.3, depth + 3.0))
+
 	# --- north wall: the entrance, with a doorway gap ---------------------
 	# The gap is 1.25 wide and the door leaf fills it.
 	_wall_run(Vector3(-hw, 0, -hd), Vector3(hw, 0, -hd), wall_height,
@@ -63,8 +78,11 @@ func _ready() -> void:
 	# --- east wall: intact for half, then collapsed to a low stub ---------
 	_wall_run(Vector3(hw, 0, -hd), Vector3(hw, 0, hd), wall_height,
 		[Vector2(0.52, 0.78)], 1.0)
-	# The collapsed stretch survives as knee-high rubble you step over: it
-	# is still solid, it is just not a wall any more.
+	# The collapsed stretch survives as knee-high rubble. At 0.55 m it is
+	# above the player's 0.30 m step height, so it is not walked over — it
+	# is JUMPED over, which is what a wall you can see the top of should
+	# ask for. tests/movement_test.gd checks both halves of that: blocked
+	# walking, passable jumping.
 	_wall_run(Vector3(hw, 0, -hd), Vector3(hw, 0, hd), 0.55,
 		[Vector2(0.0, 0.52), Vector2(0.78, 1.0)], 1.0)
 
@@ -73,10 +91,22 @@ func _ready() -> void:
 		[Vector2(0.33, 0.55)], 1.0)
 
 	# --- west wall: intact, with a window too high to climb ---------------
+	# The run leaves a full-height gap where the window goes and _window()
+	# then fills it back in below the sill and above the lintel.
+	#
+	# 0.2 built the wall solid and put the window boxes ON TOP of it, so
+	# there was no window: just a doubled wall, invisible and pointlessly
+	# solid. Section 21 — the collider and the picture have to be the same
+	# description of the same thing — and here they were not even the same
+	# shape. Now the hole is real, you can see through it, and the sill
+	# still stops you walking in.
+	var win_w := 1.6
+	var win_t := (hd - 0.0) / depth       # the window sits at local z = 0
+	var win_half := win_w * 0.5 / depth
 	_wall_run(Vector3(-hw, 0, hd), Vector3(-hw, 0, -hd), wall_height,
-		[], 1.0)
-	# Window: a gap in the UPPER half only, so the wall below stays solid.
-	_window(Vector3(-hw, 0, 0.0), Vector3(0, 0, 1), 1.6, 1.05, 1.5)
+		[Vector2(win_t - win_half, win_t + win_half)], 1.0)
+	# Window: solid below the sill, solid lintel above, open in between.
+	_window(Vector3(-hw, 0, 0.0), Vector3(0, 0, 1), win_w, 1.05, 1.5)
 
 	# --- corner buttresses, broken to different heights -------------------
 	var corners := [Vector2(-hw, -hd), Vector2(hw, -hd), Vector2(hw, hd), Vector2(-hw, hd)]

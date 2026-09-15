@@ -32,6 +32,12 @@ const WALK_CLIP := "Walking_A"
 const RUN_CLIP := "Running_A"
 const SWIM_CLIP := "Walking_A"      ## see SWIM ANIMATION PROVISIONAL below
 const PICKUP_CLIP := "PickUp"
+## The jump, added in 0.2.1. Unlike the swim, this one is NOT provisional:
+## KayKit Adventurers ships all three phases of a jump, so the air states in
+## PlayerController drive real authored clips.
+const JUMP_START_CLIP := "Jump_Start"
+const JUMP_AIR_CLIP := "Jump_Idle"
+const JUMP_LAND_CLIP := "Jump_Land"
 
 ## Measured authored ground speeds, in m/s — the output of
 ## tools/calibrate_stride.gd, not an estimate.
@@ -84,9 +90,14 @@ func setup(model: Node3D) -> bool:
 
 	# Looping matters: Godot plays imported glTF clips once by default, which
 	# is what produces the classic "character freezes mid-stride" bug.
-	for clip in [IDLE_CLIP, WALK_CLIP, RUN_CLIP]:
+	for clip in [IDLE_CLIP, WALK_CLIP, RUN_CLIP, JUMP_AIR_CLIP]:
 		var a := lib.get_animation(clip)
 		if a: a.loop_mode = Animation.LOOP_LINEAR
+	# The two ends of the jump are one-shots by nature: a looping Jump_Start
+	# is a character bouncing on the spot.
+	for clip in [JUMP_START_CLIP, JUMP_LAND_CLIP]:
+		var a := lib.get_animation(clip)
+		if a: a.loop_mode = Animation.LOOP_NONE
 
 	var prefix := "" if lib_name == "" else lib_name + "/"
 
@@ -110,11 +121,25 @@ func setup(model: Node3D) -> bool:
 	var swim_ts := AnimationNodeTimeScale.new()
 	_has_swim = true
 
+	# --- air: the three phases of a jump (section 12) ----------------------
+	var airphase := AnimationNodeTransition.new()
+	airphase.input_count = 3
+	airphase.set_input_name(0, "start")
+	airphase.set_input_name(1, "hang")
+	airphase.set_input_name(2, "land")
+	# Short, because the whole jump is only 0.8 s and a long crossfade would
+	# eat the take-off.
+	airphase.xfade_time = 0.09
+
 	var mode := AnimationNodeTransition.new()
-	mode.input_count = 2
+	mode.input_count = 3
 	mode.set_input_name(0, "ground")
 	mode.set_input_name(1, "swim")
-	mode.xfade_time = 0.3
+	mode.set_input_name(2, "air")
+	# 0.2 used 0.3 s here, which was fine when the only other mode was a swim
+	# you enter once a minute. Leaving and re-entering the ground mode twice
+	# per jump needs it much tighter or the landing arrives before the blend.
+	mode.xfade_time = 0.12
 
 	# --- pickup gesture, upper body only ----------------------------------
 	var shot := _clip(prefix + PICKUP_CLIP)
@@ -132,6 +157,10 @@ func setup(model: Node3D) -> bool:
 	bt.add_node("gait", gait, Vector2(400, -20))
 	bt.add_node("swim", _clip(prefix + SWIM_CLIP), Vector2(0, 220))
 	bt.add_node("swim_ts", swim_ts, Vector2(200, 220))
+	bt.add_node("jump_start", _clip(prefix + JUMP_START_CLIP), Vector2(0, 320))
+	bt.add_node("jump_air", _clip(prefix + JUMP_AIR_CLIP), Vector2(0, 400))
+	bt.add_node("jump_land", _clip(prefix + JUMP_LAND_CLIP), Vector2(0, 480))
+	bt.add_node("airphase", airphase, Vector2(400, 400))
 	bt.add_node("mode", mode, Vector2(600, 60))
 	bt.add_node("shot", shot, Vector2(600, 260))
 	bt.add_node("gesture", _oneshot, Vector2(820, 60))
@@ -141,8 +170,12 @@ func setup(model: Node3D) -> bool:
 	bt.connect_node("gait", 1, "walk_ts")
 	bt.connect_node("gait", 2, "run_ts")
 	bt.connect_node("swim_ts", 0, "swim")
+	bt.connect_node("airphase", 0, "jump_start")
+	bt.connect_node("airphase", 1, "jump_air")
+	bt.connect_node("airphase", 2, "jump_land")
 	bt.connect_node("mode", 0, "gait")
 	bt.connect_node("mode", 1, "swim_ts")
+	bt.connect_node("mode", 2, "airphase")
 	bt.connect_node("gesture", 0, "mode")
 	bt.connect_node("gesture", 1, "shot")
 	bt.connect_node("output", 0, "gesture")
@@ -226,8 +259,23 @@ func set_swim_effort(effort: float) -> void:
 	tree.set("parameters/swim_ts/scale", lerpf(0.35, 0.85, clampf(effort, 0.0, 1.0)))
 
 
+## Which of the three ground clips is selected right now.
+func gait_name() -> String:
+	return ["idle", "walk", "run"][_gait]
+
+
 func set_mode_ground(ground: bool) -> void:
 	tree.set("parameters/mode/transition_request", "ground" if ground else "swim")
+
+
+## Put the character in the air and choose which phase of the jump is showing.
+## `phase` is "start" (still rising hard), "hang" (the rest of the flight) or
+## "land" (the touchdown beat). Switching the mode here rather than making the
+## caller do it in two steps means the tree can never be left in the air with
+## a ground clip playing.
+func set_air_phase(phase: String) -> void:
+	tree.set("parameters/mode/transition_request", "air")
+	tree.set("parameters/airphase/transition_request", phase)
 
 
 func play_pickup() -> void:

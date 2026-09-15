@@ -1,14 +1,22 @@
-# Fog Nomad — Godot 0.2
-## Art identity · physical world · interaction foundation
+# NOMADSLAND™ — Godot 0.2.1
+## Déplacement, collision et game feel
 
-La 0.1 répondait à « Godot vaut-il le coup ». La **0.2** commence à
-construire : elle rend le monde **matériel**. On ne traverse plus un arbre,
-un rocher, un mur, une ruine, une tour, un pilier ni une porte fermée ; on
-ramasse en courant sans ralentir ; on sait sur quoi on marche.
+La 0.1 répondait à « Godot vaut-il le coup ». La 0.2 a rendu le monde
+**matériel** : on ne traverse plus un arbre, un rocher, un mur, une ruine,
+une tour, un pilier ni une porte fermée ; on ramasse en courant sans
+ralentir ; on sait sur quoi on marche.
+
+La **0.2.1** s'occupe d'une seule chose : **s'y déplacer doit commencer à
+être agréable.** Trois paliers analogiques à 3.4 / 5.5 / 7.5 m/s au lieu de
+1.5 / 4.8 ; un vrai saut, avec coyote time, tampon d'entrée et hauteur
+variable ; les petits obstacles se franchissent au pas ; et les endroits où
+l'on était bloqué sans voir d'obstacle ont été trouvés un par un, en
+envoyant le personnage dedans.
 
 Ce dépôt est **séparé** de Fog Nomad 0.7.2 (three.js), qui reste la
 référence de gameplay et n'est modifié en aucune façon.
 
+> 🏃 **Rapport 0.2.1 — déplacement, collisions, saut : [`docs/GODOT_0.2.1_MOVEMENT_BUGFIX.md`](docs/GODOT_0.2.1_MOVEMENT_BUGFIX.md)**
 > 📄 **Rapport 0.2, verdicts et auto-audit : [`docs/RAPPORT_0.2.md`](docs/RAPPORT_0.2.md)**
 > 🧱 **Vue d'ensemble 0.2 : [`docs/FOG_NOMAD_GODOT_0.2.md`](docs/FOG_NOMAD_GODOT_0.2.md)**
 > ⚠️ **Assets bloqués et à télécharger : [`docs/ASSETS_TO_DOWNLOAD.md`](docs/ASSETS_TO_DOWNLOAD.md)**
@@ -58,17 +66,22 @@ demande pas si un arbre a un `CollisionShape3D`, il lance le
 le corps s'est retrouvé **à l'intérieur** de la géométrie.
 
 ```bash
-godot --headless --path . --script tools/benchmark_tests.gd       # 30 / 30
+godot --headless --path . --script tools/benchmark_tests.gd       # 31 / 31
 godot --headless --path . --script tests/collision_world_test.gd  # 144 / 144
 godot --headless --path . --script tests/world_systems_test.gd    # 17 / 17
 godot --headless --path . --script tests/soak_test.gd             # 3 / 3
+godot --headless --path . --script tests/movement_test.gd         # 37 / 37
 ```
 
-**194 vérifications, 0 échec.** 12 obstacles × 6 approches × 2 niveaux de
-qualité pour les collisions ; portes ouvertes et fermées franchies pour de
-vrai ; six types de surface ; ramassage à pleine course ; évitement des PNJ
-et des animaux ; fuite devant la Brume ; cinq reconstructions du monde sans
-fuite de nœuds.
+**232 vérifications, 0 échec.** 12 obstacles × 6 approches × 2 niveaux de
+qualité pour les collisions, désormais **au sprint** ; portes ouvertes et
+fermées franchies pour de vrai ; six types de surface ; ramassage à pleine
+course ; évitement des PNJ et des animaux ; fuite devant la Brume ; cinq
+reconstructions du monde sans fuite de nœuds. Et, depuis la 0.2.1 : cinq
+secondes de stick tenu par palier, hauteur et apex du saut chronométrés,
+coyote time et tampon d'entrée vérifiés des deux côtés de leur fenêtre,
+chaque ouverture visible d'un bâtiment franchie pour de vrai, et le pont
+traversé, sauté et franchi par-dessus la rambarde.
 
 ## Organisation
 
@@ -79,6 +92,8 @@ scenes/            BenchmarkWorld.tscn (scène principale)
 scripts/
   physics_layers.gd  LA convention de couches — tout s'y réfère
   terrain_data.gd    LA fonction de terrain
+  player/            contrôleur, caméra, et player_movement_config.gd —
+                     LE fichier des vitesses, accélérations et du saut
   locomotion_rig.gd  AnimationTree partagé joueur/PNJ
   data/              SurfaceType, ItemDefinition, WorldObjectDefinition
   interaction/       InteractableComponent, Interactor
@@ -107,8 +122,8 @@ téléphone**.
 tools/make_zip.sh
 ```
 
-Produit `build/fog-nomad-godot-0.2.zip`, sans `.godot/` ni cache,
-importable directement par Godot (import à froid vérifié : 12,6 s).
+Produit `build/nomadsland-godot-0.2.1.zip`, sans `.godot/` ni cache,
+importable directement par Godot.
 
 ## Licence
 
