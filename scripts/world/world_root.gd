@@ -35,6 +35,13 @@ const CABIN_WISH := Vector2(31.0, 25.0)
 const PLAYER_WISH := Vector2(8.0, 42.0)
 const NPC_WISH := Vector2(20.0, 33.0)
 const ANIMAL_WISH := Vector2(44.0, 9.0)
+const RUIN_WISH := Vector2(-46.0, 12.0)
+const CAMPFIRE_WISH := Vector2(16.0, 38.0)
+
+## Showcase mode pulls every new system into one walkable cluster so the
+## whole of 0.2 can be judged in a couple of minutes (section 69), instead
+## of being spread over 280 m of benchmark world.
+@export var showcase_mode: bool = false
 
 var terrain: TerrainBuilder
 var water: WaterBody
@@ -47,6 +54,11 @@ var animal: AnimalPlaceholder
 
 var tower: BeaconTower
 var cabin: ScoutCabin
+var ruin: Ruin
+var bridge: Bridge
+var campfire: Campfire
+var npcs: Array[NpcController] = []
+var animals: Array[AnimalPlaceholder] = []
 
 var _pickups := 0
 var _props := 0
@@ -85,9 +97,44 @@ func _ready() -> void:
 	add_child(cabin)
 	reserved.append(Vector3(cabin_at.x, cabin_at.y, cabin.footprint_radius + 2.0))
 
+	# --- the ruin ---------------------------------------------------------
+	var ruin_wish := RUIN_WISH if not showcase_mode else Vector2(34.0, 56.0)
+	var ruin_at := _settle(ruin_wish, 30.0, 0.93)
+	ruin = Ruin.new()
+	ruin.name = "Ruin"
+	ruin.position = Vector3(ruin_at.x, TerrainData.height_at(ruin_at.x, ruin_at.y) - 0.05, ruin_at.y)
+	# Face the entrance at open, dry ground rather than at whatever a random
+	# yaw happens to point it at. The first version put the doorway on a
+	# riverbank, which made the one explorable building in the game reachable
+	# only by wading.
+	ruin.rotation.y = _best_entrance_yaw(ruin_at, ruin.depth * 0.5)
+	add_child(ruin)
+	reserved.append(Vector3(ruin_at.x, ruin_at.y, ruin.footprint_radius + 2.0))
+
+	# --- the bridge, where the path meets the river -----------------------
+	var ford_z := 25.0
+	var ford_x := TerrainData.river_center_x(ford_z)
+	bridge = Bridge.new()
+	bridge.name = "Bridge"
+	bridge.span = 22.0
+	bridge.position = Vector3(ford_x, TerrainData.WATER_LEVEL, ford_z)
+	# The river runs north-south, so the crossing runs east-west.
+	bridge.rotation.y = PI * 0.5
+	add_child(bridge)
+	reserved.append(Vector3(ford_x, ford_z, 14.0))
+
 	# Keep the spawn area and the NPC's start clear of trees.
 	var spawn := _settle(PLAYER_WISH, 14.0, 0.9)
 	reserved.append(Vector3(spawn.x, spawn.y, 5.0))
+
+	# --- the campfire, near the spawn where it will be used ---------------
+	var fire_wish := CAMPFIRE_WISH if not showcase_mode else spawn + Vector2(6.0, -5.0)
+	var fire_at := _settle(fire_wish, 16.0, 0.94)
+	campfire = Campfire.new()
+	campfire.name = "Campfire"
+	campfire.position = Vector3(fire_at.x, TerrainData.height_at(fire_at.x, fire_at.y), fire_at.y)
+	add_child(campfire)
+	reserved.append(Vector3(fire_at.x, fire_at.y, 3.5))
 
 	# --- vegetation, then navigation over what was actually placed --------
 	if scatter:
@@ -96,6 +143,10 @@ func _ready() -> void:
 		var obstacles := scatter.obstacle_circles() if scatter else ([] as Array[Vector3])
 		obstacles.append(Vector3(tower_at.x, tower_at.y, tower.footprint_radius))
 		obstacles.append(Vector3(cabin_at.x, cabin_at.y, cabin.footprint_radius))
+		# The ruin's walls are carved out, but its interior is left walkable
+		# so an NPC can path through the doorway rather than round the whole
+		# building — which is the point of having openings (section 24).
+		obstacles.append_array(ruin_wall_circles(ruin_at, ruin))
 		nav.build(obstacles)
 
 	# --- props, pickups, actors -------------------------------------------
@@ -105,6 +156,73 @@ func _ready() -> void:
 	_wire()
 
 	_total_ms = (Time.get_ticks_usec() - t0) / 1000.0
+
+
+## Choose a yaw for a building whose doorway is on its -Z face, such that
+## the ground in front of that doorway is walkable and dry as far out as we
+## can manage. Scored over a short corridor, not a single point, because a
+## door can open onto one dry metre and then a river.
+func _best_entrance_yaw(at: Vector2, half_depth: float) -> float:
+	var best_yaw := 0.0
+	var best_score := -INF
+	for i in 16:
+		var yaw := TAU * float(i) / 16.0
+		# The doorway's outward normal in world space for this yaw.
+		var out := Vector2(sin(yaw), cos(yaw)) * -1.0
+		var score := 0.0
+		for step in [1.5, 3.5, 5.5, 8.0, 11.0]:
+			var p: Vector2 = at + out * (half_depth + step)
+			if not TerrainData.is_walkable(p.x, p.y):
+				score -= 3.0
+				continue
+			var h := TerrainData.height_at(p.x, p.y)
+			if h < TerrainData.WATER_LEVEL + 0.8:
+				score -= 2.0
+			else:
+				score += 1.0
+				# Flat ground in front reads better and walks better.
+				score += clampf(TerrainData.normal_at(p.x, p.y).y - 0.9, 0.0, 0.1) * 10.0
+		if score > best_score:
+			best_score = score
+			best_yaw = yaw
+	return best_yaw
+
+
+## Keep-out circles tracing the ruin's WALLS, leaving its doorway, its
+## breach and its interior open. Wrapping the whole ruin in one circle would
+## make the navigation mesh disagree with the collision — the NPC would walk
+## around a building the player can walk through.
+##
+## NOTE / known limitation for 0.3: the navigation mesh is built from the
+## terrain, which treats the river as impassable, so NPCs do not yet use the
+## bridge. The bridge is solid and crossable for the player today.
+func ruin_wall_circles(at: Vector2, r: Ruin) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if r == null:
+		return out
+	var hw := r.width * 0.5
+	var hd := r.depth * 0.5
+	var yaw := r.rotation.y
+	var steps := 9
+	for i in steps + 1:
+		var t := float(i) / float(steps)
+		# North wall, minus the doorway in the middle.
+		if t < 0.40 or t > 0.60:
+			out.append(_wall_circle(at, yaw, lerpf(-hw, hw, t), -hd))
+		# South wall, minus the breach.
+		if t < 0.30 or t > 0.58:
+			out.append(_wall_circle(at, yaw, lerpf(hw, -hw, t), hd))
+		# East wall, minus the collapsed stretch.
+		if t < 0.50 or t > 0.80:
+			out.append(_wall_circle(at, yaw, hw, lerpf(-hd, hd, t)))
+		# West wall is intact.
+		out.append(_wall_circle(at, yaw, -hw, lerpf(hd, -hd, t)))
+	return out
+
+
+func _wall_circle(at: Vector2, yaw: float, lx: float, lz: float) -> Vector3:
+	var rot := Vector2(lx, lz).rotated(-yaw)
+	return Vector3(at.x + rot.x, at.y + rot.y, 1.1)
 
 
 ## Find a spot near `wish` that is dry, walkable and flat enough to build on.
@@ -312,12 +430,52 @@ func _spawn_pickup(scene: PackedScene, parent: Node3D, p: Vector2, kind: String)
 func _place_actors(spawn: Vector2) -> void:
 	if player:
 		player.global_position = Vector3(spawn.x, TerrainData.height_at(spawn.x, spawn.y) + 0.1, spawn.y)
+
+	# --- the four nomads (section 12) -------------------------------------
+	# The scene carries one NPC so the debug HUD has something to point at;
+	# the rest are spawned from the role table beside it.
+	var base := _settle(NPC_WISH if not showcase_mode else spawn + Vector2(-9.0, -6.0), 18.0, 0.86)
 	if npc:
-		var p := _settle(NPC_WISH, 18.0, 0.86)
-		npc.global_position = Vector3(p.x, TerrainData.height_at(p.x, p.y) + 0.1, p.y)
-	if animal:
-		var p := _settle(ANIMAL_WISH, 22.0, 0.86)
-		animal.global_position = Vector3(p.x, TerrainData.height_at(p.x, p.y) + 0.1, p.y)
+		npc.role_index = 0
+		npc.set_fog(fog)
+		npc.global_position = Vector3(base.x, TerrainData.height_at(base.x, base.y) + 0.1, base.y)
+		npcs.append(npc)
+	var npc_scene: PackedScene = load("res://scenes/npc/Npc.tscn")
+	for i in range(1, NpcRoles.count()):
+		var a := TAU * float(i) / float(NpcRoles.count()) + 0.7
+		var wish := base + Vector2(cos(a), sin(a)) * (7.0 + float(i) * 2.5)
+		var p := _settle(wish, 20.0, 0.86)
+		var n: NpcController = npc_scene.instantiate()
+		n.name = "Npc_%s" % str(NpcRoles.role(i)["id"])
+		n.role_index = i
+		n.nav_builder_path = NodePath("../Navigation")
+		n.fog_path = NodePath("../FogWall")
+		add_child(n)
+		n.global_position = Vector3(p.x, TerrainData.height_at(p.x, p.y) + 0.1, p.y)
+		npcs.append(n)
+
+	# --- the animals (section 37) -----------------------------------------
+	var animal_scene: PackedScene = load("res://scenes/animals/Animal.tscn")
+	for i in AnimalSpecies.count():
+		var wish := (ANIMAL_WISH if not showcase_mode else spawn + Vector2(14.0, 9.0)) \
+			+ Vector2(float(i) * 9.0, float(i) * -6.0)
+		var p := _settle(wish, 26.0, 0.86)
+		var a2: AnimalPlaceholder
+		if i == 0 and animal:
+			a2 = animal
+		else:
+			a2 = animal_scene.instantiate()
+			a2.name = "Animal_%s" % str(AnimalSpecies.get_species(i)["id"])
+			a2.nav_builder_path = NodePath("../Navigation")
+			a2.player_path = NodePath("../Player")
+			a2.fog_path = NodePath("../FogWall")
+			# BEFORE add_child: _ready() reads the species and builds the
+			# body from it, so assigning afterwards silently gives every
+			# animal the first species in the table.
+			a2.species_index = i
+			add_child(a2)
+		a2.global_position = Vector3(p.x, TerrainData.height_at(p.x, p.y) + 0.1, p.y)
+		animals.append(a2)
 
 
 func _wire() -> void:
@@ -355,4 +513,7 @@ func build_report() -> String:
 	if nav:
 		lines.append("navmesh  %d polys   %.0f ms" % [nav.polygon_count, nav.build_ms])
 	lines.append("props %d   pickups %d   world build %.0f ms" % [_props, _pickups, _total_ms])
+	lines.append("npcs %d   animals %d   ruin/bridge/fire %s" % [
+		npcs.size(), animals.size(),
+		"yes" if (ruin and bridge and campfire) else "NO"])
 	return "\n".join(lines)

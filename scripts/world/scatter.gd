@@ -13,9 +13,21 @@ class_name Scatter
 ## triangle-accurate collision against a pine canopy, and on a phone nobody
 ## can afford it.
 ##
-## LOW quality hides the tail of each MultiMesh *and disables the matching
-## collision shapes*. Hiding a tree but keeping its trunk solid would be
-## exactly the kind of false PASS the brief forbids (section 48).
+## QUALITY AND COLLISION ARE INDEPENDENT (section 65).
+##
+## 0.1 hid the tail of each MultiMesh at LOW and disabled the matching
+## collision shapes with it. That kept picture and physics in step, but it
+## made a tree traversable purely because the player had turned the quality
+## down — which 0.2 forbids outright.
+##
+## The fix is not to keep invisible trunks solid (that is just as bad from
+## the other side). It is that LOW no longer touches anything solid at all:
+## every tree and every boulder is drawn and collidable at both quality
+## levels, and LOW economises on the DECORATION instead — scrub, pebbles,
+## water plants — none of which has a collider in the first place.
+##
+## So the collision world is byte-identical at HIGH and LOW, and
+## tests/collision_world_test.gd runs its whole traversal battery at both.
 
 const COL_TRUNK := 0   ## upright cylinder, sized to the trunk only
 const COL_HULL := 1    ## simplified convex hull of the whole mesh
@@ -26,51 +38,58 @@ const COL_NONE := 2    ## decoration, walk straight through it
 const SPECIES := [
 	# --- real-scale conifers and dead wood (KayKit Halloween Bits) --------
 	{ "id": "pine_large",  "path": "res://assets/environment/structures/tree_pine_orange_large.gltf",
-	  "count": 22, "scale": [0.85, 1.15], "spacing": 9.0, "col": COL_TRUNK,
+	  "count": 26, "scale": [0.85, 1.15], "spacing": 7.5, "col": COL_TRUNK, "where": "grove",
 	  "radius": 0.55, "height": 6.0, "atlas": "structures", "tilt": 0.05 },
 	{ "id": "pine_medium", "path": "res://assets/environment/structures/tree_pine_orange_medium.gltf",
-	  "count": 20, "scale": [0.85, 1.2], "spacing": 7.5, "col": COL_TRUNK,
+	  "count": 24, "scale": [0.85, 1.2], "spacing": 6.0, "col": COL_TRUNK, "where": "grove",
 	  "radius": 0.45, "height": 5.0, "atlas": "structures", "tilt": 0.06 },
 	{ "id": "pine_yellow", "path": "res://assets/environment/structures/tree_pine_yellow_large.gltf",
-	  "count": 14, "scale": [0.8, 1.1], "spacing": 9.0, "col": COL_TRUNK,
+	  "count": 16, "scale": [0.8, 1.1], "spacing": 8.0, "col": COL_TRUNK, "where": "edge",
 	  "radius": 0.55, "height": 6.0, "atlas": "structures", "tilt": 0.05 },
 	{ "id": "dead_large",  "path": "res://assets/environment/structures/tree_dead_large.gltf",
-	  "count": 9, "scale": [0.9, 1.25], "spacing": 11.0, "col": COL_TRUNK,
+	  "count": 10, "scale": [0.9, 1.25], "spacing": 14.0, "col": COL_TRUNK, "where": "isolated",
 	  "radius": 0.4, "height": 4.5, "atlas": "structures", "tilt": 0.13 },
 	{ "id": "dead_medium", "path": "res://assets/environment/structures/tree_dead_medium.gltf",
-	  "count": 8, "scale": [0.9, 1.2], "spacing": 10.0, "col": COL_TRUNK,
+	  "count": 10, "scale": [0.9, 1.2], "spacing": 9.0, "col": COL_TRUNK, "where": "edge",
 	  "radius": 0.35, "height": 3.6, "atlas": "structures", "tilt": 0.15 },
 	# --- rounded broadleaf silhouettes (KayKit Medieval Hexagon) ----------
 	# These models are authored at hexagon-tile scale (~1.2 units tall), so
 	# they are scaled up to forest size here.
 	{ "id": "broadleaf_A", "path": "res://assets/environment/nature/tree_single_A.gltf",
-	  "count": 18, "scale": [4.0, 5.4], "spacing": 8.0, "col": COL_TRUNK,
+	  "count": 22, "scale": [4.0, 5.4], "spacing": 6.5, "col": COL_TRUNK, "where": "grove",
 	  "radius": 0.5, "height": 4.4, "atlas": "nature", "tilt": 0.07 },
 	{ "id": "broadleaf_B", "path": "res://assets/environment/nature/tree_single_B.gltf",
-	  "count": 16, "scale": [4.0, 5.6], "spacing": 8.0, "col": COL_TRUNK,
+	  "count": 18, "scale": [4.0, 5.6], "spacing": 7.0, "col": COL_TRUNK, "where": "edge",
 	  "radius": 0.5, "height": 4.4, "atlas": "nature", "tilt": 0.07 },
 	# --- rock ------------------------------------------------------------
 	{ "id": "rock_big_A",  "path": "res://assets/environment/nature/rock_single_E.gltf",
-	  "count": 11, "scale": [7.0, 11.0], "spacing": 8.0, "col": COL_HULL,
+	  "count": 13, "scale": [7.0, 11.0], "spacing": 7.0, "col": COL_HULL, "where": "rocky",
 	  "atlas": "nature", "tilt": 0.25, "yaw_free": true },
 	{ "id": "rock_big_B",  "path": "res://assets/environment/nature/rock_single_C.gltf",
-	  "count": 10, "scale": [7.0, 12.0], "spacing": 8.0, "col": COL_HULL,
+	  "count": 12, "scale": [7.0, 12.0], "spacing": 7.0, "col": COL_HULL, "where": "rocky",
 	  "atlas": "nature", "tilt": 0.25, "yaw_free": true },
 	{ "id": "rock_mid",    "path": "res://assets/environment/nature/rock_single_D.gltf",
-	  "count": 14, "scale": [4.5, 7.0], "spacing": 5.0, "col": COL_HULL,
+	  "count": 16, "scale": [4.5, 7.0], "spacing": 4.5, "col": COL_HULL, "where": "rocky",
 	  "atlas": "nature", "tilt": 0.3, "yaw_free": true },
 	{ "id": "rock_small",  "path": "res://assets/environment/nature/rock_single_B.gltf",
-	  "count": 26, "scale": [2.0, 4.0], "spacing": 3.0, "col": COL_NONE,
+	  "count": 30, "scale": [2.0, 4.0], "spacing": 3.0, "col": COL_NONE, "where": "rocky",
 	  "atlas": "nature", "tilt": 0.4, "yaw_free": true, "small": true },
 	{ "id": "pebble",      "path": "res://assets/environment/nature/rock_single_A.gltf",
-	  "count": 30, "scale": [1.5, 3.0], "spacing": 2.5, "col": COL_NONE,
+	  "count": 34, "scale": [1.5, 3.0], "spacing": 2.5, "col": COL_NONE, "where": "rocky",
 	  "atlas": "nature", "tilt": 0.5, "yaw_free": true, "small": true },
 	# --- undergrowth: clusters used as bushes, no collision ---------------
 	{ "id": "bush_A",      "path": "res://assets/environment/nature/trees_A_medium.gltf",
-	  "count": 26, "scale": [1.0, 1.7], "spacing": 4.5, "col": COL_NONE,
+	  "count": 40, "scale": [1.0, 1.7], "spacing": 3.6, "col": COL_NONE, "where": "undergrowth",
 	  "atlas": "nature", "tilt": 0.08, "small": true },
+	# The verge: the path has to look cut THROUGH something, not painted on.
+	{ "id": "verge_tree",  "path": "res://assets/environment/nature/tree_single_B.gltf",
+	  "count": 14, "scale": [3.4, 4.6], "spacing": 9.0, "col": COL_TRUNK,
+	  "where": "roadside", "radius": 0.45, "height": 3.8, "atlas": "nature", "tilt": 0.09 },
+	{ "id": "verge_scrub", "path": "res://assets/environment/nature/trees_A_medium.gltf",
+	  "count": 22, "scale": [0.9, 1.5], "spacing": 4.0, "col": COL_NONE,
+	  "where": "roadside", "atlas": "nature", "tilt": 0.08, "small": true },
 	{ "id": "bush_B",      "path": "res://assets/environment/nature/trees_B_medium.gltf",
-	  "count": 22, "scale": [1.0, 1.6], "spacing": 4.5, "col": COL_NONE,
+	  "count": 34, "scale": [1.0, 1.6], "spacing": 3.6, "col": COL_NONE, "where": "edge",
 	  "atlas": "nature", "tilt": 0.08, "small": true },
 ]
 
@@ -95,6 +114,7 @@ const LAYOUT_SEED := 0x0F06_0A17
 @export var structures_material: Material
 
 var _rng := RandomNumberGenerator.new()
+var composition: ForestComposition
 var _taken: Array[Vector3] = []          ## every placement: x, z, spacing
 var _blocking: Array[Vector3] = []       ## only the ones with real collision
 var _reserved: Array[Vector3] = []
@@ -110,6 +130,10 @@ func build(reserved: Array[Vector3]) -> void:
 	var t0 := Time.get_ticks_usec()
 	_reserved = reserved
 	_rng.seed = LAYOUT_SEED
+	# Lay out the wood first — stands, glades, boulder fields — then let each
+	# species find its place inside that structure.
+	composition = ForestComposition.new(_rng)
+	composition.compose(reserved)
 	for s in SPECIES:
 		_build_species(s)
 	for s in WATER_SPECIES:
@@ -144,16 +168,27 @@ func _first_mesh(n: Node) -> Mesh:
 	return null
 
 
-func _free_spot(spacing: float, max_tries: int, water: bool, depth_range: Array) -> Vector3:
+func _free_spot(spacing: float, max_tries: int, policy: int,
+		water: bool = false, depth_range: Array = []) -> Vector3:
 	var lim := TerrainData.SIZE - 8.0
 	for _i in max_tries:
-		var x := _rng.randf_range(-lim, lim)
-		var z := _rng.randf_range(-lim, lim)
+		var x := 0.0
+		var z := 0.0
 		if water:
+			x = _rng.randf_range(-lim, lim)
+			z = _rng.randf_range(-lim, lim)
 			var d := TerrainData.water_depth_at(x, z)
 			if d < depth_range[0] or d > depth_range[1]:
 				continue
 		else:
+			# The composition proposes, the terrain disposes.
+			var cand := composition.propose(policy)
+			if cand == Vector2.INF:
+				continue
+			x = cand.x
+			z = cand.y
+			if absf(x) > lim or absf(z) > lim:
+				continue
 			if not TerrainData.is_walkable(x, z):
 				continue
 			# Leave the trodden path trodden.
@@ -161,6 +196,8 @@ func _free_spot(spacing: float, max_tries: int, water: bool, depth_range: Array)
 				continue
 			# Keep a dry margin so trees do not stand in the river.
 			if TerrainData.height_at(x, z) < TerrainData.WATER_LEVEL + 0.7:
+				continue
+			if not composition.accepts(policy, Vector2(x, z)):
 				continue
 		var ok := true
 		for r in _reserved:
@@ -186,8 +223,9 @@ func _build_species(s: Dictionary) -> void:
 		return
 	var transforms: Array[Transform3D] = []
 	var count: int = s["count"]
+	var policy := ForestComposition.policy_from_name(str(s.get("where", "grove")))
 	for _i in count:
-		var spot := _free_spot(s["spacing"], 60, false, [])
+		var spot := _free_spot(s["spacing"], 90, policy)
 		if spot == Vector3.INF:
 			continue
 		var sc := _rng.randf_range(s["scale"][0], s["scale"][1])
@@ -232,10 +270,10 @@ func _build_species(s: Dictionary) -> void:
 	if col != COL_NONE:
 		var body := StaticBody3D.new()
 		body.name = "Col_" + str(s["id"])
-		# Layer 1 = world geometry, which is what the player and NPCs collide
-		# with and what the interaction ray tests against.
-		body.collision_layer = 1
+		# Solid level geometry. Characters collide with this and nothing else.
+		body.collision_layer = Layers.WORLD_STATIC
 		body.collision_mask = 0
+		SurfaceType.tag(body, SurfaceType.Kind.WOOD if col == COL_TRUNK else SurfaceType.Kind.ROCK)
 		add_child(body)
 		var hull: ConvexPolygonShape3D = null
 		var hull_r := 0.0
@@ -272,7 +310,7 @@ func _build_species(s: Dictionary) -> void:
 			_blocking.push_back(Vector3(t.origin.x, t.origin.z, maxf(block_r, 0.4)))
 
 	_entries.push_back({ "mmi": mmi, "shapes": shapes, "total": transforms.size(),
-		"small": s.get("small", false) })
+		"decorative": col == COL_NONE })
 
 
 func _scaled_hull(src: ConvexPolygonShape3D, sc: float) -> ConvexPolygonShape3D:
@@ -290,7 +328,8 @@ func _build_water_species(s: Dictionary) -> void:
 		return
 	var transforms: Array[Transform3D] = []
 	for _i in int(s["count"]):
-		var spot := _free_spot(s["spacing"], 70, true, s["depth"])
+		var spot := _free_spot(s["spacing"], 70, ForestComposition.Policy.SHORE,
+			true, s["depth"])
 		if spot == Vector3.INF:
 			continue
 		var sc := _rng.randf_range(s["scale"][0], s["scale"][1])
@@ -318,27 +357,35 @@ func _build_water_species(s: Dictionary) -> void:
 	add_child(mmi)
 	instance_count += transforms.size()
 	_entries.push_back({ "mmi": mmi, "shapes": [] as Array[CollisionShape3D],
-		"total": transforms.size(), "small": true })
+		"total": transforms.size(), "decorative": true })
 
 
+## LOW economises on DECORATION only.
+##
+## Nothing with a collider is touched here — not its visibility, not its
+## shapes. That is section 65: the collision world must be identical at both
+## quality levels, and a tree must not become traversable because the player
+## turned the quality down. It also means LOW can never produce the opposite
+## bug, an invisible trunk you walk into.
+##
+## What LOW actually saves: scrub, pebbles, small rocks, water plants. In
+## this scene that is the clear majority of the instances and all of the
+## overdraw, and none of it is solid.
 func _on_quality_changed(_level: int) -> void:
 	var ratio := Quality.vegetation_ratio()
-	var keep_small := Quality.small_props()
 	for e in _entries:
 		var total: int = e["total"]
 		var mmi: MultiMeshInstance3D = e["mmi"]
-		var n := total
-		if e["small"]:
-			n = total if keep_small else 0
-		else:
-			n = int(ceil(total * ratio))
+		if not e["decorative"]:
+			# Solid species: always fully drawn, always fully collidable.
+			mmi.multimesh.visible_instance_count = total
+			mmi.visible = true
+			continue
+		# Decoration thins out; it never disappears entirely, or LOW stops
+		# looking like the same wood.
+		var n := int(ceil(total * ratio))
 		mmi.multimesh.visible_instance_count = n
 		mmi.visible = n > 0
-		# Collision must follow visibility exactly — an invisible tree you
-		# still bump into is a bug, not an optimisation.
-		var shapes: Array = e["shapes"]
-		for i in shapes.size():
-			(shapes[i] as CollisionShape3D).disabled = i >= n
 
 
 ## Keep-out circles — Vector3(x, z, radius) — for the solid things this

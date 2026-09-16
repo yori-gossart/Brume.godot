@@ -54,7 +54,7 @@ func _ready() -> void:
 	sb.content_margin_bottom = 8
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.position = Vector2(12, 12)
-	panel.size = Vector2(330, 10)
+	panel.size = Vector2(350, 10)
 	add_child(panel)
 
 	_label = Label.new()
@@ -102,43 +102,76 @@ func _refresh() -> void:
 	var objs := rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)
 
 	var lines := PackedStringArray()
-	lines.append("FOG NOMAD — GODOT BENCHMARK 0.1")
+	lines.append("NOMADSLAND — GODOT 0.2.1b   MOVEMENT")
 	lines.append("FPS %d   min %d   avg %d" % [
 		Engine.get_frames_per_second(), int(_fps_min),
 		int(_fps_sum / maxf(_fps_n, 1))])
 	lines.append("draws %d   prims %s   objects %d" % [draws, _short(prims), objs])
 	lines.append("quality  %s        renderer  %s" % [Quality.level_name(), _renderer_name()])
 
+	var inter: Interactor = null
 	if _player:
+		# SECTION 35 — the movement read-out. Every line here is a number the
+		# controller actually decided with, not a derived nicety: if moving
+		# feels wrong, this panel is where the disagreement shows up. TARGET
+		# next to SPEED is the important pair — a target the speed never
+		# reaches means acceleration is the problem, not the top speed.
+		inter = _player.get_node_or_null("Interactor") as Interactor
 		lines.append("")
-		lines.append("player   %s   depth %.2f m" % [_player.state_name(), _player.water_depth])
-		lines.append("speed    %.2f m/s   %s" % [
-			_player.horizontal_speed, "RUN" if _player.run_held else "walk"])
-		lines.append("surface  %s   in-volume %s" % [
+		lines.append("STATE    %-5s %-8s %s" % [
+			_player.state_name(), _player.air_name(), _player.tier_name()])
+		lines.append("SPEED    %.2f / %.2f m/s   (%s)" % [
+			_player.horizontal_speed, _player.target_speed,
+			"RUN" if _player.run_held else "walk"])
+		lines.append("V-VEL    %+.2f m/s   GROUNDED %s   fall %.2f m" % [
+			_player.velocity.y, "yes" if _player.is_grounded else "NO",
+			_player.fall_distance])
+		lines.append("COYOTE   %.3f s   BUFFER %.3f s   jumps %d" % [
+			_player.coyote_left, _player.jump_buffer_left, _player.jumps_made])
+		lines.append("SLOPE    %.1f deg   steps %d   depth %.2f m" % [
+			_player.slope_angle, _player.steps_climbed, _player.water_depth])
+		lines.append("SURFACE  %s   in-volume %s" % [
 			_player.surface_name(), "yes" if _player.in_water_volume else "no"])
-		var inter := _player.get_node_or_null("Interactor") as Interactor
 		if inter:
-			lines.append("interact %s   bois %d  cristal %d" % [
-				(inter.prompt() if inter.has_candidate() else "—"),
-				inter.total_of("BOIS"), inter.total_of("CRISTAL")])
+			lines.append("INTERACT %s" % (inter.prompt() if inter.has_candidate() else "—"))
+			lines.append("carried   bois %d   cristal %d   %.1f kg" % [
+				inter.total_of(&"BOIS"), inter.total_of(&"CRISTAL"), inter.carried_weight])
 		if _fog:
 			var d := _fog.distance_to(_player.global_position)
 			lines.append("brume    %.1f m %s" % [absf(d), "INSIDE" if d <= 0.0 else "ahead"])
 
-	if _npc or _animal:
+	if _player and _player.appearance:
+		lines.append("look     %s" % _player.appearance.describe())
+
+	# Section 70: the state of the things that are supposed to be alive.
+	var world_npcs: Array = (_world.get("npcs") if _world else null) as Array
+	if world_npcs and not world_npcs.is_empty():
 		lines.append("")
-		if _npc:
-			lines.append("npc      %s   %.2f m/s" % [_npc.state_name(), _npc.horizontal_speed])
-		if _animal:
-			lines.append("animal   %s   %.2f m/s   (PLACEHOLDER)" % [
-				_animal.state_name(), _animal.horizontal_speed])
+		for n in world_npcs:
+			var npc: NpcController = n
+			lines.append("npc %-11s %-6s %.2f m/s" % [
+				npc.role_name, npc.state_name(), npc.horizontal_speed])
+	elif _npc:
+		lines.append("")
+		lines.append("npc      %s   %.2f m/s" % [_npc.state_name(), _npc.horizontal_speed])
+
+	var world_animals: Array = (_world.get("animals") if _world else null) as Array
+	if world_animals and not world_animals.is_empty():
+		for a in world_animals:
+			var an: AnimalPlaceholder = a
+			lines.append("animal %-9s %-6s %.2f m/s %s" % [
+				an.species_name, an.state_name(), an.horizontal_speed,
+				"(PLACEHOLDER)" if AnimalSpecies.is_placeholder(an.species_index) else ""])
+	elif _animal:
+		lines.append("animal   %s   %.2f m/s   (PLACEHOLDER)" % [
+			_animal.state_name(), _animal.horizontal_speed])
 
 	if _world and _world.has_method("build_report"):
 		lines.append("")
 		lines.append_array(str(_world.call("build_report")).split("\n"))
 
 	lines.append("")
-	lines.append("[i] hide    F3 panel    F4 quality")
+	lines.append("[i] hide  [A] apparence  ESPACE saut  MAJ sprint  F3  F4")
 	_label.text = "\n".join(lines)
 
 

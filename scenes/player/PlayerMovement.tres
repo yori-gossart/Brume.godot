@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="PlayerMovementConfig" load_steps=2 format=3]
+
+; The player's movement tuning, as an editable resource (section 36).
+;
+; It deliberately overrides nothing: every value comes from the defaults in
+; player_movement_config.gd, so that script stays the single readable place
+; where the numbers live. This file exists so the numbers can be nudged from
+; the inspector on a phone without editing code — anything changed here
+; overrides the script default for this instance and shows up as one line in
+; the diff.
+
+[ext_resource type="Script" path="res://scripts/player/player_movement_config.gd" id="1_cfg"]
+
+[resource]
+script = ExtResource("1_cfg")

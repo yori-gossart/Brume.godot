@@ -20,7 +20,14 @@ func _init() -> void:
 	var lt := sk.find_bone("toes.l")
 	var rt := sk.find_bone("toes.r")
 
-	for pair in [["Walking_A", 2.0], ["Running_A", 5.0], ["Walking_B", 2.0], ["Running_B", 5.0]]:
+	# Sampled at the speeds the game actually asks each clip to cover, because
+	# the residual is not the same at every speed: a run clip stretched to
+	# 7.5 m/s and the same clip slowed to 3.8 m/s have different flight
+	# fractions, so "the floor" is a curve, not a constant. 0.2.1b needed the
+	# 3.8 m/s figure — the new WALK ceiling plays Running_A.
+	for pair in [["Walking_A", 1.25], ["Walking_A", 2.0],
+			["Running_A", 3.8], ["Running_A", 5.0], ["Running_A", 7.5],
+			["Walking_B", 2.0], ["Running_B", 5.0]]:
 		var clip: String = pair[0]
 		var v: float = pair[1]
 		var best_k := 0.0

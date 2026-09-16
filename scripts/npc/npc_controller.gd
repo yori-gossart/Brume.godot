@@ -26,6 +26,12 @@ enum State { IDLE, WALK, ARRIVE }
 @export var min_travel: float = 16.0
 @export var max_travel: float = 62.0
 @export var nav_builder_path: NodePath
+## Index into NpcRoles.ROLES. Decides body, outfit colours, skin, gait.
+@export var role_index: int = 0
+@export var appearance: CharacterAppearance
+## Flees when the Brume gets this close (section 78).
+@export var fog_fear_distance: float = 26.0
+@export var fog_path: NodePath
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var model_pivot: Node3D = $ModelPivot
@@ -40,14 +46,28 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 
 var _stuck := 0.0
 
 var horizontal_speed: float = 0.0
+var role_name: String = "Nomade"
+var _fog: Node
+var _fleeing := false
 
 
 func _ready() -> void:
-	_rng.seed = 0x4E504331     # fixed so the NPC's route is the same every run
-	var model: Node3D = model_pivot.get_child(0)
-	LocomotionRig.hide_weapons(model)
+	# Seeded per role, so four NPCs do not walk the same route in lockstep.
+	_rng.seed = 0x4E504331 + role_index * 7919
+	var role := NpcRoles.role(role_index)
+	if appearance == null:
+		appearance = NpcRoles.appearance_for(role_index)
+	walk_speed = float(role["walk_speed"])
+	idle_time = role["idle"]
+	role_name = str(role["name"])
+	var model := CharacterBuilder.build(model_pivot, appearance)
+	if model == null:
+		model = model_pivot.get_child(0)
 	_rig = LocomotionRig.new()
 	_rig.setup(model)
+	SoftBodyAvoidance.register(self)
+	if _fog == null:
+		_fog = get_node_or_null(fog_path)
 	_nav = get_node_or_null(nav_builder_path) as NavBuilder
 	agent.path_desired_distance = 0.7
 	agent.target_desired_distance = 1.1
@@ -69,6 +89,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = 0.0
 
+	_check_fog()
+
 	match state:
 		State.IDLE:
 			_brake(delta)
@@ -82,6 +104,10 @@ func _physics_process(delta: float) -> void:
 			if velocity.length() < 0.15:
 				state = State.IDLE
 				_wait = _rng.randf_range(idle_time.x, idle_time.y)
+
+	var push := SoftBodyAvoidance.push_for(self, Vector3(velocity.x, 0.0, velocity.z))
+	velocity.x += push.x
+	velocity.z += push.z
 
 	move_and_slide()
 	horizontal_speed = Vector2(velocity.x, velocity.z).length()
@@ -154,7 +180,49 @@ func _pick_destination() -> void:
 	_stuck = 0.0
 
 
+## Hand the NPC the fog directly. WorldRoot uses this for the nomad that
+## ships inside the scene, because that one is already _ready() by the time
+## the world starts placing things — assigning `fog_path` afterwards would
+## be assigning a path nobody re-reads, and the NPC would never be afraid of
+## anything.
+func set_fog(node: Node) -> void:
+	_fog = node
+
+
+## The Brume is a hazard a nomad can see coming (section 78). This is the
+## cheapest possible version of that and it already changes how the world
+## feels: people walk away from the fog line, so the fog line reads as bad.
+func _check_fog() -> void:
+	if _fog == null or not is_instance_valid(_fog) or not _fog.has_method("distance_to"):
+		return
+	var d := float(_fog.call("distance_to", global_position))
+	if d < fog_fear_distance:
+		if not _fleeing:
+			_fleeing = true
+			_flee_fog()
+	elif _fleeing and d > fog_fear_distance * 1.7:
+		_fleeing = false
+
+
+func _flee_fog() -> void:
+	if _nav == null:
+		return
+	# Somewhere well clear of the fog line, which runs along +Z.
+	var away := global_position + Vector3(_rng.randf_range(-24.0, 24.0), 0.0, -48.0)
+	if not TerrainData.is_walkable(away.x, away.z):
+		away = _nav.random_point(_rng, global_position, 25.0, 70.0)
+	agent.target_position = Vector3(away.x, TerrainData.height_at(away.x, away.z), away.z)
+	state = State.WALK
+	_stuck = 0.0
+
+
+func is_fleeing() -> bool:
+	return _fleeing
+
+
 func state_name() -> String:
+	if _fleeing:
+		return "FLEE"
 	match state:
 		State.WALK: return "WALK"
 		State.ARRIVE: return "ARRIVE"

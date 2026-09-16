@@ -36,8 +36,9 @@ var merged_away: int = 0
 func _ready() -> void:
 	var body := StaticBody3D.new()
 	body.name = "TowerCollision"
-	body.collision_layer = 1
+	body.collision_layer = Layers.WORLD_STATIC
 	body.collision_mask = 0
+	SurfaceType.tag(body, SurfaceType.Kind.WOOD)
 	add_child(body)
 
 	var stone := BuildKit.material(Color(0.353, 0.345, 0.329), 0.94)
