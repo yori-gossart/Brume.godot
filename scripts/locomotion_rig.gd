@@ -27,22 +27,41 @@ class_name LocomotionRig
 ## falls straight out of it. tools/benchmark_tests.gd then re-measures the
 ## residual slide as a pass/fail check, so this cannot silently regress.
 
-const IDLE_CLIP := "Idle"
-const WALK_CLIP := "Walking_A"
-const RUN_CLIP := "Running_A"
-const SWIM_CLIP := "Walking_A"      ## see SWIM ANIMATION PROVISIONAL below
-const PICKUP_CLIP := "PickUp"
+## THE CLIP SET IS PER-INSTANCE (0.2.2), not global.
+##
+## The NPCs stay on KayKit Adventurers; the player wears the Quaternius
+## scout, whose library names everything differently. Same rig code, two
+## vocabularies — see use_ual1().
+var idle_clip := "Idle"
+var walk_clip := "Walking_A"
+var run_clip := "Running_A"
+var swim_clip := "Walking_A"        ## see SWIM ANIMATION PROVISIONAL below
+var pickup_clip := "PickUp"
 ## The jump, added in 0.2.1. Unlike the swim, this one is NOT provisional:
 ## KayKit Adventurers ships all three phases of a jump, so the air states in
 ## PlayerController drive real authored clips.
-const JUMP_START_CLIP := "Jump_Start"
-const JUMP_AIR_CLIP := "Jump_Idle"
-const JUMP_LAND_CLIP := "Jump_Land"
+var jump_start_clip := "Jump_Start"
+var jump_air_clip := "Jump_Idle"
+var jump_land_clip := "Jump_Land"
 
 ## Measured authored ground speeds, in m/s — the output of
 ## tools/calibrate_stride.gd, not an estimate.
-const WALK_REF := 0.77
-const RUN_REF := 3.85
+var walk_ref := 0.77
+var run_ref := 3.85
+
+## The two bones the foot-slide measurement tracks. KayKit calls them toes,
+## the Quaternius rig calls them balls.
+var foot_bones := ["toes.l", "toes.r"]
+
+## THE RESIDUAL EACH CLIP IMPOSES, plus a margin — the pass mark the test
+## uses. It belongs to the CLIP SET, not to the test: a run cycle's planted
+## foot is never still, because part of the cycle has no planted foot at
+## all, and how much of the cycle that is differs from one animator to the
+## next. KayKit's Running_A floors at 36.4%; the Quaternius Sprint floors at
+## 52-57% over the same speed range. Both figures come from
+## tools/calibrate_stride.gd, neither is a guess.
+var slide_floor_walk := 0.28
+var slide_floor_run := 0.47
 
 ## Playback rate limits. Past these a clip stops reading as the gait it is:
 ## a walk at 3x is a scurry, a run at 0.3x is a moonwalk.
@@ -55,14 +74,57 @@ const MAX_RATE := 2.15
 ## They meet at ~1.64 m/s, which is therefore where the gait changes — the
 ## one speed at which both clips can be played at an honest rate.
 const IDLE_SPEED := 0.22
-const WALK_TO_RUN := 1.64
+## Where the gait changes: the slowest speed the run clip can cover without
+## being played below MIN_RATE. Derived from run_ref so it follows the clip
+## set instead of being a number that only happened to suit KayKit.
+var walk_to_run := 3.85 * MIN_RATE
 ## Hysteresis, so a speed hovering on the boundary does not strobe.
 const GAIT_HYSTERESIS := 0.25
 
 ## Upper-body bones the pickup gesture is allowed to touch. The legs keep
 ## running, which is the entire point of section 13.
-const UPPER_BODY := ["spine", "chest", "upperarm.l", "lowerarm.l", "wrist.l",
+var upper_body := ["spine", "chest", "upperarm.l", "lowerarm.l", "wrist.l",
 	"hand.l", "upperarm.r", "lowerarm.r", "wrist.r", "hand.r", "head", "neck"]
+
+
+## Switch this rig to the Quaternius UAL1 vocabulary (0.2.2).
+##
+## Call BEFORE setup(). Swim deliberately keeps a ground clip: the controller
+## pitches the whole model prone and plays it slowly, and 0.2.1b's swimming
+## is validated. UAL1 does ship Swim_Fwd_Loop — TODO for a later pass, it
+## needs the prone pitch removed at the same time or the two will stack.
+func use_ual1() -> void:
+	# Godot's glTF importer strips the "_Loop" suffix and sets the loop mode
+	# itself, so the names here are the IMPORTED ones, not the ones in the
+	# .glb. Checked against the imported library, not assumed.
+	idle_clip = "Idle"
+	walk_clip = "Walk"
+	run_clip = "Sprint"
+	swim_clip = "Walk"
+	pickup_clip = "Interact"
+	jump_start_clip = "Jump_Start"
+	jump_air_clip = "Jump"
+	jump_land_clip = "Jump_Land"
+	foot_bones = ["ball_l", "ball_r"]
+	upper_body = ["spine_01", "spine_02", "spine_03", "neck_01", "Head",
+		"clavicle_l", "upperarm_l", "lowerarm_l", "hand_l",
+		"clavicle_r", "upperarm_r", "lowerarm_r", "hand_r"]
+	# Measured on the composed scout, not guessed.
+	#
+	#   Walk    locks hard: 1.6% residual at the optimum, A = 1.04 m/s.
+	#   Sprint  A = 6.2 m/s at 3.7 m/s of travel, 6.7 at 7.35. Its residual
+	#           floor is 57% / 52% at those two speeds — a long flight phase,
+	#           not a bad binding; in game it reads 60% / 55%, three points
+	#           above what the clip can do at best.
+	#
+	# Jog_Fwd was tried first and is worse at every rate (81% / 49% and
+	# 74% / 69% at two different refs), so Sprint covers the whole run band.
+	# TODO: a dedicated jog gait would need a third transition input.
+	walk_ref = 1.04
+	run_ref = 6.40
+	slide_floor_walk = 0.15
+	slide_floor_run = 0.65
+	walk_to_run = run_ref * MIN_RATE
 
 var tree: AnimationTree
 var player: AnimationPlayer
@@ -90,12 +152,12 @@ func setup(model: Node3D) -> bool:
 
 	# Looping matters: Godot plays imported glTF clips once by default, which
 	# is what produces the classic "character freezes mid-stride" bug.
-	for clip in [IDLE_CLIP, WALK_CLIP, RUN_CLIP, JUMP_AIR_CLIP]:
+	for clip in [idle_clip, walk_clip, run_clip, jump_air_clip]:
 		var a := lib.get_animation(clip)
 		if a: a.loop_mode = Animation.LOOP_LINEAR
 	# The two ends of the jump are one-shots by nature: a looping Jump_Start
 	# is a character bouncing on the spot.
-	for clip in [JUMP_START_CLIP, JUMP_LAND_CLIP]:
+	for clip in [jump_start_clip, jump_land_clip]:
 		var a := lib.get_animation(clip)
 		if a: a.loop_mode = Animation.LOOP_NONE
 
@@ -142,24 +204,24 @@ func setup(model: Node3D) -> bool:
 	mode.xfade_time = 0.12
 
 	# --- pickup gesture, upper body only ----------------------------------
-	var shot := _clip(prefix + PICKUP_CLIP)
+	var shot := _clip(prefix + pickup_clip)
 	_oneshot = AnimationNodeOneShot.new()
 	_oneshot.fadein_time = 0.12
 	_oneshot.fadeout_time = 0.25
 	_oneshot.autorestart = false
 
 	var bt := AnimationNodeBlendTree.new()
-	bt.add_node("idle", _clip(prefix + IDLE_CLIP), Vector2(0, -120))
-	bt.add_node("walk", _clip(prefix + WALK_CLIP), Vector2(0, -20))
-	bt.add_node("run", _clip(prefix + RUN_CLIP), Vector2(0, 80))
+	bt.add_node("idle", _clip(prefix + idle_clip), Vector2(0, -120))
+	bt.add_node("walk", _clip(prefix + walk_clip), Vector2(0, -20))
+	bt.add_node("run", _clip(prefix + run_clip), Vector2(0, 80))
 	bt.add_node("walk_ts", walk_ts, Vector2(200, -20))
 	bt.add_node("run_ts", run_ts, Vector2(200, 80))
 	bt.add_node("gait", gait, Vector2(400, -20))
-	bt.add_node("swim", _clip(prefix + SWIM_CLIP), Vector2(0, 220))
+	bt.add_node("swim", _clip(prefix + swim_clip), Vector2(0, 220))
 	bt.add_node("swim_ts", swim_ts, Vector2(200, 220))
-	bt.add_node("jump_start", _clip(prefix + JUMP_START_CLIP), Vector2(0, 320))
-	bt.add_node("jump_air", _clip(prefix + JUMP_AIR_CLIP), Vector2(0, 400))
-	bt.add_node("jump_land", _clip(prefix + JUMP_LAND_CLIP), Vector2(0, 480))
+	bt.add_node("jump_start", _clip(prefix + jump_start_clip), Vector2(0, 320))
+	bt.add_node("jump_air", _clip(prefix + jump_air_clip), Vector2(0, 400))
+	bt.add_node("jump_land", _clip(prefix + jump_land_clip), Vector2(0, 480))
 	bt.add_node("airphase", airphase, Vector2(400, 400))
 	bt.add_node("mode", mode, Vector2(600, 60))
 	bt.add_node("shot", shot, Vector2(600, 260))
@@ -221,7 +283,7 @@ func _apply_upper_body_filter(model: Node3D) -> void:
 	_oneshot.filter_enabled = true
 	var skel_path := str(model.get_path_to(skeleton))
 	var wanted := {}
-	for b in UPPER_BODY:
+	for b in upper_body:
 		wanted[b] = true
 	for b in skeleton.get_bone_count():
 		var bn := str(skeleton.get_bone_name(b))
@@ -242,15 +304,15 @@ func set_blend_speed(speed: float) -> void:
 	if speed < IDLE_SPEED:
 		_gait = 0
 	elif _gait == 2:
-		if speed < WALK_TO_RUN - GAIT_HYSTERESIS:
+		if speed < walk_to_run - GAIT_HYSTERESIS:
 			_gait = 1
-	elif speed > WALK_TO_RUN:
+	elif speed > walk_to_run:
 		_gait = 2
 	else:
 		_gait = 1
 	tree.set("parameters/gait/transition_request", ["idle", "walk", "run"][_gait])
-	tree.set("parameters/walk_ts/scale", clampf(speed / WALK_REF, MIN_RATE, MAX_RATE))
-	tree.set("parameters/run_ts/scale", clampf(speed / RUN_REF, MIN_RATE, MAX_RATE))
+	tree.set("parameters/walk_ts/scale", clampf(speed / walk_ref, MIN_RATE, MAX_RATE))
+	tree.set("parameters/run_ts/scale", clampf(speed / run_ref, MIN_RATE, MAX_RATE))
 
 
 ## SWIM ANIMATION PROVISIONAL: the walk cycle, slowed right down, under a

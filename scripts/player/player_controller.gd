@@ -69,8 +69,15 @@ enum Tier { WALK, RUN, SPRINT }
 @export var swim_lift: float = 0.86
 
 ## Who the player looks like. Left null, a default scout is built —
-## ocre, not green (section 7 of the 0.2 brief).
+## ocre, not green (section 7 of the 0.2 brief). Only consulted when
+## `use_quaternius_scout` is off; NPCs always use it.
 @export var appearance: CharacterAppearance
+
+## 0.2.2: wear the Quaternius Éclaireur (base body + Male Ranger outfit +
+## UAL1 animation library) instead of the KayKit placeholder. Falls back to
+## KayKit on its own if any of the three assets is missing, so the project
+## still runs on a checkout without them.
+@export var use_quaternius_scout: bool = true
 
 @onready var model_pivot: Node3D = $ModelPivot
 @onready var interactor: Node = $Interactor
@@ -127,11 +134,7 @@ func _ready() -> void:
 	_model_base_y = model_pivot.position.y
 	if appearance == null:
 		appearance = CharacterAppearance.make_default()
-	var model := CharacterBuilder.build(model_pivot, appearance)
-	if model == null:
-		model = model_pivot.get_child(0)
-	_rig = LocomotionRig.new()
-	_rig.setup(model)
+	_build_model()
 	SoftBodyAvoidance.register(self)
 	floor_max_angle = deg_to_rad(movement.max_slope_deg)
 	floor_snap_length = movement.floor_snap_length
@@ -362,6 +365,21 @@ func _set_air(a: int) -> void:
 ## can judge foot slide against the floor of the clip that is really running.
 func gait_name() -> String:
 	return _rig.gait_name() if _rig else "?"
+
+
+## The two foot bones of whichever rig the player is wearing. KayKit calls
+## them toes, the Quaternius rig calls them balls; the tests ask rather than
+## hardcode either.
+func foot_bones() -> Array:
+	return _rig.foot_bones if _rig else ["toes.l", "toes.r"]
+
+
+## The foot-slide pass mark for a gait, which belongs to the clip set the
+## player is wearing rather than to the test. See LocomotionRig.
+func slide_floor(gait: String) -> float:
+	if _rig == null:
+		return 0.47
+	return _rig.slide_floor_run if gait == "run" else _rig.slide_floor_walk
 
 
 func air_name() -> String:
@@ -672,15 +690,32 @@ func play_pickup_gesture() -> void:
 
 ## Re-dress the player from a (possibly edited) appearance. Used by the
 ## customisation screen; rebuilds the model and re-binds the animation rig.
+##
+## 0.2.2: while `use_quaternius_scout` is on, the appearance is stored but
+## not worn — the scout is one fixed outfit, not a wardrobe. The KayKit
+## recolouring path is untouched and still drives every NPC.
 func apply_appearance(a: CharacterAppearance) -> void:
 	appearance = a
-	var model := CharacterBuilder.build(model_pivot, appearance)
+	_build_model()
+	_pitch = 0.0
+	model_pivot.rotation = Vector3(0.0, _facing, 0.0)
+
+
+## Build the player's model and bind the animation rig to it.
+func _build_model() -> void:
+	var model: Node3D = null
+	if use_quaternius_scout:
+		model = ScoutBuilder.build(model_pivot)
+	if model == null:
+		model = CharacterBuilder.build(model_pivot, appearance)
+	if model == null:
+		model = model_pivot.get_child(0) if model_pivot.get_child_count() > 0 else null
 	if model == null:
 		return
 	_rig = LocomotionRig.new()
+	if use_quaternius_scout:
+		_rig.use_ual1()
 	_rig.setup(model)
-	_pitch = 0.0
-	model_pivot.rotation = Vector3(0.0, _facing, 0.0)
 
 
 func state_name() -> String:

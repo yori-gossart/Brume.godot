@@ -163,8 +163,11 @@ func _t_player_animation() -> void:
 	if sk == null or tree == null:
 		_ok("PLAYER ANIMATIONS", false, "no Skeleton3D / AnimationTree on the player")
 		return
-	var lt := sk.find_bone("toes.l")
-	var rt := sk.find_bone("toes.r")
+	# Asked of the rig, not hardcoded: 0.2.2 put the player on a different
+	# skeleton whose foot bones are named ball_l / ball_r.
+	var feet: Array = player.foot_bones()
+	var lt := sk.find_bone(str(feet[0]))
+	var rt := sk.find_bone(str(feet[1]))
 
 	# --- is the skeleton actually being posed? -----------------------------
 	# Sampled while WALKING, not while idle: the Idle clip keeps the feet
@@ -200,7 +203,6 @@ func _t_player_animation() -> void:
 	# the stick's range and judges each against the floor of the clip the rig
 	# ACTUALLY selected, asked of the rig rather than guessed from the speed.
 	# The half-stick sample is what still exercises Walking_A.
-	var floors := {"walk": 0.28, "run": 0.47, "idle": 0.28}
 	# 0.2.1b moved the WALK ceiling from 3.4 to 3.8 m/s, which moved the
 	# half-stick sample from 1.48 to 1.66 m/s — just past the 1.64 m/s gait
 	# change, so it started playing Running_A and Walking_A stopped being
@@ -212,7 +214,9 @@ func _t_player_animation() -> void:
 			{"name": "sprint", "mag": 1.0, "run": true}]:
 		var m := await _foot_slide(lt, rt, sk, bool(probe["run"]), float(probe["mag"]))
 		var gait := str(m["gait"])
-		var limit := float(floors.get(gait, 0.47))
+		# Asked of the player, because the limit is a property of the clip
+		# being played and 0.2.2 put the player on a different clip set.
+		var limit := player.slide_floor(gait)
 		_ok("NO FOOT SLIDING (%s)" % probe["name"], m["ratio"] < limit,
 			"%s clip at %.2f m/s: planted foot %.2f m/s = %.0f%% (floor %.0f%%)"
 				% [gait, m["body"], m["foot"], m["ratio"] * 100.0, limit * 100.0])
