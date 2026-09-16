@@ -3,6 +3,10 @@
 
 > Cette phase n'est **pas** un art pass. Objectif unique : **se déplacer dans
 > NOMADSLAND doit commencer à être agréable.**
+>
+> ⚠️ Les vitesses ci-dessous ont été **réajustées en 0.2.1b** après le test
+> réel sur Galaxy A55 : WALK 3.4 → 3.8 et RUN 5.5 → 5.8, SPRINT inchangé.
+> Voir [`GODOT_0.2.1b_MOBILE_TUNING.md`](GODOT_0.2.1b_MOBILE_TUNING.md).
 
 ```
 ================================

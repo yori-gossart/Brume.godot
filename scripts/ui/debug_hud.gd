@@ -102,7 +102,7 @@ func _refresh() -> void:
 	var objs := rs.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)
 
 	var lines := PackedStringArray()
-	lines.append("NOMADSLAND — GODOT 0.2.1   MOVEMENT")
+	lines.append("NOMADSLAND — GODOT 0.2.1b   MOVEMENT")
 	lines.append("FPS %d   min %d   avg %d" % [
 		Engine.get_frames_per_second(), int(_fps_min),
 		int(_fps_sum / maxf(_fps_n, 1))])

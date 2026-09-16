@@ -24,6 +24,25 @@ class_name MobileHud
 @export var margin_ratio: float = 0.055
 @export var dead_zone: float = 0.13
 
+@export_group("Feel")
+## THE FORWARD AXIS OF THE STICK, in the space `move_input` is written in.
+##
+## PlayerController._wish_direction() computes `right * move_input.x +
+## forward * move_input.y`, so +Y is the axis that means "away from the
+## camera". Stated here as a value rather than baked into StickShaping,
+## because the corridor has to be relative to the axis this widget really
+## uses — the stick itself works in screen space, where +Y is DOWN, and an
+## angle measured against the wrong one of the two is a bug that only shows
+## up once the player turns around. tests/movement_test.gd checks it against
+## the direction the CharacterBody3D actually travels, not against this
+## constant.
+const FORWARD_AXIS := Vector2(0.0, 1.0)
+## Half-width of the "this is straight ahead" corridor, in degrees each side
+## of FORWARD_AXIS. See StickShaping.
+@export var forward_corridor_deg: float = StickShaping.CORRIDOR_DEG
+## How far past the corridor the lateral component fades back in.
+@export var corridor_blend_deg: float = StickShaping.BLEND_DEG
+
 var _player: PlayerController
 var _camera: PlayerCamera
 var _interactor: Interactor
@@ -245,9 +264,17 @@ func _drag_stick(pos: Vector2) -> void:
 		out = Vector2.ZERO
 	else:
 		out = out.normalized() * inverse_lerp(dead_zone, 1.0, minf(out.length(), 1.0))
-	# Screen Y grows downwards; forward is up.
+	# Screen Y grows downwards; forward is up. From here on the vector is in
+	# the controller's input space, where +Y is forward.
+	var wish := Vector2(out.x, -out.y)
+	# 0.2.1b: straighten a thumb that is only approximately pointing forward.
+	# Applied HERE and not in the controller on purpose — this is a property
+	# of a thumb on glass, not of the character. A keyboard, a gamepad or a
+	# test writing move_input directly is not shaped, and should not be.
+	wish = StickShaping.forward_corridor(wish, FORWARD_AXIS,
+		forward_corridor_deg, corridor_blend_deg)
 	if _player:
-		_player.move_input = Vector2(out.x, -out.y)
+		_player.move_input = wish
 	queue_redraw()
 
 

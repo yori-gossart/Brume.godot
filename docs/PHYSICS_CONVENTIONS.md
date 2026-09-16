@@ -225,3 +225,25 @@ arête de pierre de 0.38 m ressemble à une marche et n'en est pas une. La
 règle : **toute transition sol → bâtiment doit tenir dans `step_height`**,
 au besoin en ajoutant des assises basses qui découpent la lèvre. C'est ce
 que fait le stylobate de la ruine.
+
+
+## 0.2.1b — un angle de manche se mesure contre l'axe qu'on utilise
+
+Le couloir de direction du joystick (`scripts/ui/stick_shaping.gd`) ne
+suppose **jamais** où est l'avant : l'appelant lui passe son axe et tout est
+calculé relativement à lui.
+
+La raison est qu'il y a trois conventions dans ce projet et qu'elles ne
+coïncident pas :
+
+| espace | avant |
+|---|---|
+| écran (le widget) | −Y — Y croît vers le bas |
+| entrée (`move_input`) | +Y — `_wish_direction()` le multiplie par le forward de la caméra |
+| monde | `Vector3(-sin(yaw), 0, -cos(yaw))` |
+
+Un angle écrit en dur contre la mauvaise des trois donne un correctif qui a
+l'air de fonctionner jusqu'à ce que le joueur se retourne. La règle : **tout
+seuil angulaire sur une entrée est relatif à un axe passé en paramètre, et
+se vérifie contre la trajectoire réelle du corps**, jamais contre la valeur
+du widget qui l'a produit.

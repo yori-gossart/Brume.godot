@@ -71,6 +71,7 @@ func _run() -> void:
 	await _t_sprint_interaction()
 	await _t_doors_at_speed()
 	await _t_mobile_ui()
+	await _t_forward_corridor()
 
 	print("\n=== RESULTS ===")
 	for c in checks:
@@ -1173,6 +1174,208 @@ func _open_pickups() -> Array:
 			continue
 		out.append(n)
 	return out
+
+
+# ==================================================== 0.2.1b section 2 ====
+## THE FORWARD STEERING CORRIDOR.
+##
+## Two halves, because they answer different questions.
+##
+## The first sweeps the shaping function itself at half-degree resolution.
+## That is where continuity and monotonicity can actually be established —
+## you cannot prove "no abrupt edge" from six samples driven through a
+## physics engine.
+##
+## The second drives REAL TOUCHES through the real dispatcher and measures
+## the direction the CharacterBody3D actually travels, against the camera's
+## own axes. Section 4 asks for exactly that, and it is the half that would
+## catch the failure the brief warns about: a corridor computed against the
+## wrong convention looks perfect in the widget and steers the character
+## sideways.
+func _t_forward_corridor() -> void:
+	var hud: MobileHud = world.get_node_or_null("UI/MobileHud") as MobileHud
+	if hud == null:
+		_ok("FORWARD CORRIDOR", false, "no MobileHud in the scene")
+		return
+	var fwd := MobileHud.FORWARD_AXIS
+	var corridor: float = hud.forward_corridor_deg
+	var blend: float = hud.corridor_blend_deg
+
+	# ---------- the shaping function, swept ------------------------------
+	var coarse := _sweep_corridor(fwd, corridor, blend, 0.5)
+	var fine := _sweep_corridor(fwd, corridor, blend, 0.125)
+
+	_ok("CORRIDOR STRAIGHTENS THE WOBBLE", float(coarse["inside_max"]) < 0.01,
+		"worst residual inside +/-%.0f deg: %.4f deg" % [corridor, coarse["inside_max"]])
+	_ok("CORRIDOR LEAVES REAL TURNS ALONE", float(coarse["outside_err"]) < 0.01,
+		"worst error beyond %.0f deg: %.4f deg (full analogue range kept)"
+			% [corridor + blend, coarse["outside_err"]])
+
+	# "No abrupt edge" is a statement about CONTINUITY, and a threshold on the
+	# step between two samples cannot express it: a 9 degree band that has to
+	# give back 24 degrees is necessarily steep in the middle, and a steep
+	# ramp is not a cliff.
+	#
+	# What separates the two is how the biggest step behaves when the samples
+	# are moved closer together. For a continuous function it shrinks in
+	# proportion — quarter the spacing, quarter the step. Across a real jump
+	# it does not shrink at all. So: sweep at 0.5 deg and at 0.125 deg and
+	# compare.
+	var jump_c: float = coarse["worst_jump"]
+	var jump_f: float = fine["worst_jump"]
+	var ratio := jump_f / maxf(jump_c, 0.000001)
+	_ok("CORRIDOR EDGE IS NOT A CLIFF",
+		ratio < 0.5 and bool(coarse["monotone"]) and jump_c < 3.0,
+		"worst step %.3f deg at 0.5 deg spacing, %.3f deg at 0.125 deg (ratio %.2f; a jump would stay near 1.00); monotone: %s"
+			% [jump_c, jump_f, ratio, coarse["monotone"]])
+	# The transition has to actually transition: partway through the blend
+	# band the output must be between "straightened" and "untouched".
+	var mid := corridor + blend * 0.5
+	var mid_out := StickShaping.angle_from(
+		StickShaping.forward_corridor(
+			Vector2(-sin(deg_to_rad(mid)), cos(deg_to_rad(mid))), fwd, corridor, blend),
+		fwd)
+	_ok("CORRIDOR BLEND IS PROGRESSIVE", mid_out > 0.05 and mid_out < mid - 0.05,
+		"at %.1f deg in, %.2f deg out (0 would be a hard snap, %.1f would be no blend)"
+			% [mid, mid_out, mid])
+	_ok("CORRIDOR KEEPS STICK INTENSITY", float(coarse["mag_err"]) < 0.0001,
+		"worst magnitude change across the sweep: %.6f" % coarse["mag_err"])
+	# Backing up has no "straight ahead" to snap to and must be untouched.
+	var back := Vector2(0.2, -0.9)
+	_ok("CORRIDOR IGNORES THE BACK HALF",
+		StickShaping.forward_corridor(back, fwd, corridor, blend).is_equal_approx(back),
+		"a stick pulled back comes out unchanged: %s" % str(back))
+
+	# ---------- and now the body ------------------------------------------
+	var spot := _flat_spot()
+	if spot == Vector3.INF:
+		_ok("CORRIDOR ON THE BODY", false, "no flat ground found")
+		return
+	hud.process_mode = Node.PROCESS_MODE_INHERIT
+	hud.call("_layout")
+	var stick_c: Vector2 = hud.get("_stick_c")
+	var stick_r: float = hud.get("_stick_r")
+	var yaw := 0.0
+	var forward3 := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var right3 := Vector3(cos(yaw), 0.0, -sin(yaw))
+
+	var measured := {}
+	var speeds := {}
+	for want: float in [0.0, 8.0, 15.0, 24.0, 45.0, 90.0, -8.0, -45.0]:
+		await _place(spot)
+		player.camera_yaw = yaw
+		_touch(hud, 0, stick_c, true)
+		# Screen space has Y down, so the same direction is mirrored in Y.
+		var d := Vector2(-sin(deg_to_rad(want)), -cos(deg_to_rad(want)))
+		_drag(hud, 0, stick_c + d * stick_r * 0.92)
+		for _i in 55:
+			await physics_frame
+			player.camera_yaw = yaw
+		var vel := Vector3(player.velocity.x, 0.0, player.velocity.z)
+		var got := 0.0
+		if vel.length() > 0.2:
+			got = rad_to_deg(atan2(-vel.dot(right3), vel.dot(forward3)))
+		measured[want] = got
+		speeds[want] = vel.length()
+		_touch(hud, 0, stick_c, false)
+		await physics_frame
+
+	# A. dead ahead, and B. small wobbles either side.
+	var straight_worst := 0.0
+	for want: float in [0.0, 8.0, -8.0]:
+		straight_worst = maxf(straight_worst, absf(float(measured[want])))
+	_ok("BODY RUNS STRAIGHT IN THE CORRIDOR", straight_worst < 1.5,
+		"thumb at 0 / +8 / -8 deg -> body at %.2f / %.2f / %.2f deg off the camera axis"
+			% [measured[0.0], measured[8.0], measured[-8.0]])
+
+	# E and F. A deliberate diagonal, a hard turn, and the mirror of each.
+	var turn_worst := 0.0
+	for want: float in [45.0, 90.0, -45.0]:
+		turn_worst = maxf(turn_worst, absf(float(measured[want]) - want))
+	_ok("BODY KEEPS DELIBERATE TURNS", turn_worst < 2.5,
+		"thumb at +45 / +90 / -45 -> body at %.1f / %.1f / %.1f deg"
+			% [measured[45.0], measured[90.0], measured[-45.0]])
+
+	# D, on the body: the edge of the corridor and the middle of the blend
+	# must sit between straightened and untouched.
+	var edge := float(measured[15.0])
+	var blended := float(measured[24.0])
+	_ok("BODY SHOWS THE BLEND", absf(edge) < 2.0 and blended > 20.0,
+		"thumb at the corridor edge (15 deg) -> %.2f deg; past the blend (24 deg) -> %.2f deg"
+			% [edge, blended])
+
+	# G. the corridor must not have cost any speed.
+	var s0: float = speeds[0.0]
+	var s8: float = speeds[8.0]
+	var s45: float = speeds[45.0]
+	_ok("CORRIDOR COSTS NO SPEED",
+		absf(s8 - s0) < s0 * 0.02 and absf(s45 - s0) < s0 * 0.02,
+		"same stick intensity: %.3f m/s straight, %.3f m/s at 8 deg, %.3f m/s at 45 deg"
+			% [s0, s8, s45])
+
+	# H. and none of it may cost the stick when a second thumb arrives.
+	await _place(spot)
+	player.camera_yaw = yaw
+	_touch(hud, 0, stick_c, true)
+	var d8 := Vector2(-sin(deg_to_rad(8.0)), -cos(deg_to_rad(8.0)))
+	_drag(hud, 0, stick_c + d8 * stick_r * 0.92)
+	await physics_frame
+	var before_input := player.move_input
+	var jumps_before := player.jumps_made
+	_touch(hud, 1, hud.get("_jump_c"), true)
+	for _i in 10:
+		await physics_frame
+	var after_input := player.move_input
+	_touch(hud, 1, hud.get("_jump_c"), false)
+	var run_c: Vector2 = hud.get("_run_c")
+	_touch(hud, 2, run_c, true)
+	_touch(hud, 2, run_c, false)
+	await physics_frame
+	var sprinting := player.run_held
+	var still_held := player.move_input
+	_touch(hud, 0, stick_c, false)
+	_touch(hud, 2, run_c, true)
+	_touch(hud, 2, run_c, false)
+	await physics_frame
+	hud.process_mode = Node.PROCESS_MODE_DISABLED
+	_ok("CORRIDOR SURVIVES MULTITOUCH",
+		before_input.is_equal_approx(after_input)
+			and still_held.is_equal_approx(after_input)
+			and player.jumps_made > jumps_before and sprinting
+			and absf(before_input.x) < 0.01,
+		"stick %s held through a jump (%d) and a sprint tap (%s), still straightened"
+			% [str(before_input), player.jumps_made - jumps_before, sprinting])
+
+
+## Sweep the shaper from dead ahead to 70 degrees at `step` degree spacing.
+func _sweep_corridor(fwd: Vector2, corridor: float, blend: float,
+		step: float) -> Dictionary:
+	var inside_max := 0.0
+	var outside_err := 0.0
+	var worst_jump := 0.0
+	var mag_err := 0.0
+	var monotone := true
+	var prev_out := 0.0
+	var a := 0.0
+	var first := true
+	while a <= 70.0:
+		var v := Vector2(-sin(deg_to_rad(a)), cos(deg_to_rad(a))) * 0.8
+		var shaped := StickShaping.forward_corridor(v, fwd, corridor, blend)
+		var out := StickShaping.angle_from(shaped, fwd)
+		mag_err = maxf(mag_err, absf(shaped.length() - v.length()))
+		if a <= corridor:
+			inside_max = maxf(inside_max, absf(out))
+		elif a >= corridor + blend:
+			outside_err = maxf(outside_err, absf(out - a))
+		if not first:
+			worst_jump = maxf(worst_jump, absf(out - prev_out))
+			if out < prev_out - 0.0001:
+				monotone = false
+		prev_out = out
+		first = false
+		a += step
+	return {"inside_max": inside_max, "outside_err": outside_err,
+		"worst_jump": worst_jump, "mag_err": mag_err, "monotone": monotone}
 
 
 func _touch(hud: Node, index: int, pos: Vector2, pressed: bool) -> void:

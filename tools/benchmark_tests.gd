@@ -201,8 +201,13 @@ func _t_player_animation() -> void:
 	# ACTUALLY selected, asked of the rig rather than guessed from the speed.
 	# The half-stick sample is what still exercises Walking_A.
 	var floors := {"walk": 0.28, "run": 0.47, "idle": 0.28}
+	# 0.2.1b moved the WALK ceiling from 3.4 to 3.8 m/s, which moved the
+	# half-stick sample from 1.48 to 1.66 m/s — just past the 1.64 m/s gait
+	# change, so it started playing Running_A and Walking_A stopped being
+	# exercised at all. The probe exists to cover the walk clip, so its stick
+	# position follows the ceiling down: 0.34 of 3.8 is 1.29 m/s.
 	for probe: Dictionary in [
-			{"name": "half stick", "mag": 0.45, "run": false},
+			{"name": "half stick", "mag": 0.34, "run": false},
 			{"name": "walk tier", "mag": 1.0, "run": false},
 			{"name": "sprint", "mag": 1.0, "run": true}]:
 		var m := await _foot_slide(lt, rt, sk, bool(probe["run"]), float(probe["mag"]))
@@ -215,6 +220,13 @@ func _t_player_animation() -> void:
 
 ## Median world-space speed of whichever foot is planted, over ~2 s of
 ## steady-state locomotion.
+##
+## The route is a fixed point and a fixed heading on purpose: it is the same
+## stretch of ground the 0.1 and 0.2 measurements used, so the numbers stay
+## comparable across versions. A "flattest lane on the map" search was tried
+## in 0.2.1b and made things worse — flat by terrain height is not the same
+## as clear of trees, and a run-up that clips a trunk reports the collision
+## as foot slide.
 func _foot_slide(lt: int, rt: int, sk: Skeleton3D, run: bool, mag: float = 1.0) -> Dictionary:
 	await _place(Vector3(8, 0, 46))
 	player.camera_yaw = 0.0
@@ -223,7 +235,6 @@ func _foot_slide(lt: int, rt: int, sk: Skeleton3D, run: bool, mag: float = 1.0) 
 	# Let the speed and the blend settle before measuring.
 	for _i in 70:
 		await physics_frame
-	var body_speed := player.horizontal_speed
 	# Which clip the rig settled on, straight from the rig.
 	var gait := player.gait_name()
 	# The true world path of the foot, not an approximation: bone poses are
@@ -233,9 +244,17 @@ func _foot_slide(lt: int, rt: int, sk: Skeleton3D, run: bool, mag: float = 1.0) 
 	var prev_l: Vector3 = sk.global_transform * sk.get_bone_global_pose(lt).origin
 	var prev_r: Vector3 = sk.global_transform * sk.get_bone_global_pose(rt).origin
 	var samples := []
+	# The body speed is sampled over the SAME window as the feet and reduced
+	# the same way. Taking it once before the loop and comparing it against a
+	# two-second median of the feet skews the ratio by however much the
+	# ground tilted in between — which is exactly how the walk-tier sample
+	# came to read 46% against a 47% limit while the sprint, four times
+	# faster, read 44%.
+	var body_samples := []
 	var dt := 1.0 / float(Engine.physics_ticks_per_second)
 	for _i in 120:
 		await physics_frame
+		body_samples.append(player.horizontal_speed)
 		var wl: Vector3 = sk.global_transform * sk.get_bone_global_pose(lt).origin
 		var wr: Vector3 = sk.global_transform * sk.get_bone_global_pose(rt).origin
 		var sl := Vector2(wl.x - prev_l.x, wl.z - prev_l.z).length() / dt
@@ -246,7 +265,9 @@ func _foot_slide(lt: int, rt: int, sk: Skeleton3D, run: bool, mag: float = 1.0) 
 	player.move_input = Vector2.ZERO
 	player.run_held = false
 	samples.sort()
+	body_samples.sort()
 	var med: float = samples[samples.size() / 2]
+	var body_speed: float = body_samples[body_samples.size() / 2]
 	return {"foot": med, "body": body_speed, "gait": gait,
 		"ratio": med / maxf(body_speed, 0.001)}
 

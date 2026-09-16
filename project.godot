@@ -12,13 +12,13 @@ config_version=5
 
 [application]
 
-config/name="NOMADSLAND — Godot 0.2.1"
-config/description="0.2.1 — movement, collision and game feel.
+config/name="NOMADSLAND — Godot 0.2.1b"
+config/description="0.2.1b — movement, collision and game feel.
 Mobile renderer, GDScript only, portrait. Every movement number lives in
 scripts/player/player_movement_config.gd (section 36); physics layers in
 docs/PHYSICS_CONVENTIONS.md. Main scene is the benchmark world; the review
 scene is scenes/testing/ArtPhysicsShowcase.tscn."
-config/version="0.2.1"
+config/version="0.2.1b"
 run/main_scene="res://scenes/BenchmarkWorld.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
 config/icon="res://icon.svg"

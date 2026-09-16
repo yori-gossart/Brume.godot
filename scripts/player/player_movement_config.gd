@@ -36,8 +36,16 @@ class_name PlayerMovementConfig
 ## 1.5 m/s is a slow amble — a real walk is about 1.4 and a jog 3.0 — and at
 ## this world's scale (a 160 m map, a river 18 m across) it meant a minute of
 ## nothing to get anywhere. These are deliberately faster than realistic.
-@export var walk_speed: float = 3.4
-@export var run_speed: float = 5.5
+##
+## 0.2.1b, after the first real run on the Galaxy A55: 3.4 and 5.5 were
+## close but the walk still dragged a little and the run wanted more bite.
+## 3.8 and 5.8. SPRINT was right and is untouched.
+##
+## 3.8 m/s is also, by luck rather than design, almost exactly the speed
+## Running_A was authored for (3.85 m/s), so the default gait now plays at
+## 0.99x — the most honest playback rate in the whole locomotion set.
+@export var walk_speed: float = 3.8
+@export var run_speed: float = 5.8
 @export var sprint_speed: float = 7.5
 ## How far the stick has to be pushed, with RUN held, before WALK becomes
 ## SPRINT. Below this, RUN held gives RUN.
@@ -161,10 +169,10 @@ func turn_speed_at(speed: float) -> float:
 ## Returns an empty array when everything is inside its band.
 func out_of_spec() -> PackedStringArray:
 	var bad := PackedStringArray()
-	if walk_speed < 3.0 or walk_speed > 3.8:
-		bad.append("walk_speed %.2f outside 3.0..3.8 (section 2)" % walk_speed)
-	if run_speed < 5.0 or run_speed > 6.0:
-		bad.append("run_speed %.2f outside 5.0..6.0 (section 2)" % run_speed)
+	if walk_speed < 3.2 or walk_speed > 4.0:
+		bad.append("walk_speed %.2f outside 3.2..4.0 (0.2.1b section 1)" % walk_speed)
+	if run_speed < 5.2 or run_speed > 6.2:
+		bad.append("run_speed %.2f outside 5.2..6.2 (0.2.1b section 1)" % run_speed)
 	if sprint_speed < 7.0 or sprint_speed > 8.0:
 		bad.append("sprint_speed %.2f outside 7.0..8.0 (section 2)" % sprint_speed)
 	if not (walk_speed < run_speed and run_speed < sprint_speed):
